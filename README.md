@@ -1,36 +1,136 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Markoby
 
-## Getting Started
+**Your AI growth marketer for the zero-ad-budget era.**
 
-First, run the development server:
+Markoby interviews early-stage founders about their product, then generates
+platform-native organic marketing plans and surfaces real prospects on
+Reddit, X (Twitter), Instagram, Discord, and YouTube. Single plan:
+**₹299/month** via Razorpay. No free tier, no ad spend.
+
+## Stack
+
+| Layer      | Tech                                                                   |
+| ---------- | ---------------------------------------------------------------------- |
+| Frontend   | Next.js 16 (App Router) · TypeScript · Tailwind v4 · shadcn/ui (Base UI) |
+| Backend    | Supabase — Postgres + RLS, Auth (email/password), Edge Functions       |
+| AI         | Groq (`openai/gpt-oss-120b` primary, `openai/gpt-oss-20b` scoring) — OpenAI-compatible |
+| Payments   | Razorpay Subscriptions + Checkout + webhooks (INR, ₹299/month)         |
+| Background | `after()` jobs on the server (plan generation, prospect discovery)     |
+| Hosting    | Vercel (app) + Supabase (backend)                                      |
+
+## Data model
+
+`profiles`, `subscriptions`, `projects`, `onboarding_messages`,
+`onboarding_summary`, `project_platforms`, `marketing_plans`, `prospects`,
+`usage_events` — RLS on every table; users can only touch rows scoped to
+`auth.uid()` (via `user_id` or the `is_project_owner()` helper on child
+tables). See `supabase/migrations/0001_init.sql`.
+
+## AI design notes
+
+- **All Groq calls are server-side only** (`src/lib/ai/groq.ts`); the key
+  never reaches the client.
+- Purpose-built prompts per task (no mega-prompt): interviewer, extractor,
+  one plan prompt **per platform** (Reddit strategy ≠ Instagram strategy),
+  and relevance scoring. Versions tracked in `PROMPT_VERSIONS`.
+- The onboarding interview streams token-by-token over NDJSON from a route
+  handler; each turn is persisted so the transcript is durable.
+- Plan generation runs as a background job with a polling "generating…" UI.
+- Model, prompt version, and token usage are logged to `usage_events` on
+  every call.
+- The structured `onboarding_summary` — not the raw transcript — grounds
+  plan generation and prospect scoring.
+
+## Prospect discovery: honest by design
+
+Official APIs only, degrading gracefully where platforms don't allow search:
+
+- **Reddit** — official API (script app, free 100 QPM OAuth tier): search
+  posts matching the founder's audience, scored by Groq.
+- **YouTube** — official Data API v3 (free 10,000 units/day, 100/search):
+  search recent videos, scored by Groq.
+- **X / Instagram / Discord** — no usable public search API (X is paywalled;
+  Instagram/Discord have none). The product says so plainly and delivers a
+  **targeting guide** instead of a fake auto-populated list.
+
+No scraping. No ToS circumvention.
+
+## Setup
+
+### 1. Install
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # fill in everything below
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Supabase
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Create a project at [supabase.com](https://supabase.com).
+2. SQL Editor → paste and run `supabase/migrations/0001_init.sql`
+   (or `supabase link && supabase db push`).
+3. Auth → Providers → Email: disable "Confirm email" for the fastest
+   first-run experience (keep it on for production).
+4. Project Settings → API → copy URL + anon key + service_role key.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npx supabase gen types typescript --project-id <ref> > src/lib/supabase/database.types.ts
+```
 
-## Learn More
+### 3. Groq
 
-To learn more about Next.js, take a look at the following resources:
+Create a key at [console.groq.com/keys](https://console.groq.com/keys) →
+`GROQ_API_KEY`. Model IDs live in `src/lib/ai/models.ts` — verify against
+[console.groq.com/docs/models](https://console.groq.com/docs/models) when
+upgrading.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 4. Razorpay
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Dashboard → Settings → API Keys → generate test keys.
+2. Create a **recurring** monthly plan: ₹299 (29900 paise), INR → copy the
+   `plan_...` id.
+3. Settings → Webhooks → add
+   `https://<ref>.supabase.co/functions/v1/razorpay-webhook`, subscribe to
+   `subscription.*` events, set a secret.
+4. Deploy the webhook:
 
-## Deploy on Vercel
+```bash
+supabase functions deploy razorpay-webhook
+supabase secrets set RAZORPAY_WEBHOOK_SECRET=... RAZORPAY_KEY_SECRET=...
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The webhook is the source of truth for subscription status; the app also
+optimistically activates after Checkout signature verification so founders
+aren't blocked on webhook latency.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 5. Prospect APIs (optional, both free)
+
+- **Reddit**: create a *script* app at reddit.com/prefs/apps →
+  `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`.
+- **YouTube**: enable YouTube Data API v3 in Google Cloud → create an API
+  key → `YOUTUBE_API_KEY`.
+
+Without these, Reddit/YouTube prospect discovery is skipped gracefully;
+plans and guides still work.
+
+### 6. Run
+
+```bash
+npm run dev        # http://localhost:3000
+npm run build      # production build
+```
+
+## Core loop
+
+Sign up → Razorpay Checkout → Dashboard → New Project (optional website
+drop — the site is fetched and parsed server-side to sharpen the interview)
+→ AI interview (adaptive, streamed) → structured summary extracted → pick
+platforms → per-platform plans generated in the background → prospect lists
++ targeting guides → mark prospects contacted / ignore → re-run the
+interview or regenerate plans as the product evolves.
+
+## Deploy
+
+- **Vercel**: import the repo, add all `NEXT_PUBLIC_*` and server env vars.
+- **Supabase**: deploy the webhook function, run migrations.
+- Point Razorpay webhooks at the deployed function URL.
