@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Toaster } from "sonner";
 
+import { GoogleAnalytics } from "@/components/google-analytics";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -44,6 +46,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col">
         {children}
+        <GoogleAnalytics />
         <Toaster position="top-center" richColors />
       </body>
     </html>
