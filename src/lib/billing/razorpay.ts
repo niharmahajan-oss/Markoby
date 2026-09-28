@@ -1,6 +1,7 @@
 import "server-only";
 
-import type Razorpay from "razorpay";
+import Razorpay from "razorpay";
+
 
 /**
  * Server-only Razorpay helpers. Uses Razorpay Subscriptions (recurring plan)
@@ -23,10 +24,7 @@ function getRazorpayClient(): Razorpay {
   if (!keyId || !keySecret) {
     throw new Error("RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are not set");
   }
-  // Lazy require keeps the SDK out of bundles that don't need billing.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const RazorpayCtor = require("razorpay") as typeof Razorpay;
-  return new RazorpayCtor({ key_id: keyId, key_secret: keySecret });
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
 }
 
 /** Create (or reuse) a Razorpay customer for this user. */
