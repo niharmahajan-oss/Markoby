@@ -8,7 +8,7 @@ import {
   getRazorpayKeyId,
   verifyCheckoutSignature,
 } from "@/lib/billing/razorpay";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 
 export type StartSubscriptionResult =
   | {
@@ -20,6 +20,36 @@ export type StartSubscriptionResult =
     }
   | { ok: false; error: string };
 
+type SubscriptionRow = {
+  razorpay_customer_id: string | null;
+  razorpay_subscription_id: string | null;
+};
+
+/**
+ * Billing writes must use the service-role client: the `subscriptions` table is
+ * deliberately RLS-locked against user writes (so nobody can self-activate).
+ * A user-scoped update is *silently* ignored — Supabase answers 200 with an
+ * empty array and no error — which is exactly how the Razorpay ids used to get
+ * lost, breaking checkout retries and post-payment activation.
+ */
+function serviceRoleKeyMissing(): boolean {
+  return !process.env.SUPABASE_SERVICE_ROLE_KEY;
+}
+
+async function loadSubscriptionRow(userId: string): Promise<SubscriptionRow | null> {
+  const admin = await createAdminClient();
+  const { data, error } = await admin
+    .from("subscriptions")
+    .select("razorpay_customer_id, razorpay_subscription_id")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) {
+    console.error("[billing] could not read subscription row:", error.message);
+    return null;
+  }
+  return (data as SubscriptionRow | null) ?? null;
+}
+
 /**
  * Creates the Razorpay customer + subscription and stores their ids on the
  * user's subscriptions row (status stays inactive until the webhook confirms).
@@ -28,41 +58,51 @@ export type StartSubscriptionResult =
 export async function startSubscription(): Promise<StartSubscriptionResult> {
   const user = await getUserWithSubscription();
   if (!user) return { ok: false, error: "You need to sign in first." };
-  if (hasActiveSubscription(user)) return { ok: false, error: "You already have an active subscription." };
+  if (hasActiveSubscription(user)) {
+    return { ok: false, error: "You already have an active subscription." };
+  }
+  if (serviceRoleKeyMissing()) {
+    console.error("[billing] SUPABASE_SERVICE_ROLE_KEY is not set");
+    return {
+      ok: false,
+      error:
+        "Billing isn't fully configured on the server (missing service role key). Please contact support@markoby.app.",
+    };
+  }
 
-  const supabase = await createClient();
-
-  // Reuse whatever Razorpay ids we already have so retries are idempotent:
-  // closing Checkout and trying again resumes the same customer/mandate
-  // instead of creating new ones on every attempt.
-  const { data: row } = await supabase
-    .from("subscriptions")
-    .select("razorpay_customer_id, razorpay_subscription_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const existing = await loadSubscriptionRow(user.id);
 
   try {
     const customer = await ensureCustomer(
       user.id,
       user.email,
       user.fullName,
-      row?.razorpay_customer_id,
+      existing?.razorpay_customer_id,
     );
     const subscription = await createSubscription(
       customer.id,
-      row?.razorpay_subscription_id,
+      existing?.razorpay_subscription_id,
     );
 
-    const { error } = await supabase
+    const admin = await createAdminClient();
+    const { data: saved, error } = await admin
       .from("subscriptions")
-      .update({
-        razorpay_customer_id: customer.id,
-        razorpay_subscription_id: subscription.id,
-        status: "inactive",
-      })
-      .eq("user_id", user.id);
+      .upsert(
+        {
+          user_id: user.id,
+          razorpay_customer_id: customer.id,
+          razorpay_subscription_id: subscription.id,
+          status: "inactive",
+        },
+        { onConflict: "user_id" },
+      )
+      .select("id");
 
-    if (error) return { ok: false, error: "Could not save your subscription. Try again." };
+    // Guard against the silent zero-row write described above.
+    if (error || !saved?.length) {
+      console.error("[billing] could not persist subscription ids:", error?.message);
+      return { ok: false, error: "Could not save your subscription. Try again." };
+    }
 
     return {
       ok: true,
@@ -93,15 +133,20 @@ export async function activateSubscription(input: {
 }): Promise<ActivateResult> {
   const user = await getUserWithSubscription();
   if (!user) return { ok: false, error: "You need to sign in first." };
+  if (serviceRoleKeyMissing()) {
+    return { ok: false, error: "Billing isn't fully configured on the server." };
+  }
 
-  const supabase = await createClient();
-  const { data: row } = await supabase
-    .from("subscriptions")
-    .select("id, razorpay_subscription_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (!row || row.razorpay_subscription_id !== input.razorpaySubscriptionId) {
+  const row = await loadSubscriptionRow(user.id);
+  if (!row) {
+    // No row yet: the webhook will create/update it by subscription id.
+    console.warn("[billing] no subscriptions row while activating", input.razorpaySubscriptionId);
+  } else if (
+    row.razorpay_subscription_id &&
+    row.razorpay_subscription_id !== input.razorpaySubscriptionId
+  ) {
+    // A *stale* id (null) is fine — we just stored this one. A mismatched,
+    // non-null id means something else is going on.
     return { ok: false, error: "Subscription mismatch. Contact support." };
   }
 
@@ -122,11 +167,23 @@ export async function activateSubscription(input: {
   // via webhook. Optimistically activate with a 48h grace window.
   const periodEnd = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
 
-  const { error } = await supabase
+  const admin = await createAdminClient();
+  const { data: saved, error } = await admin
     .from("subscriptions")
-    .update({ status: "active", current_period_end: periodEnd })
-    .eq("user_id", user.id);
+    .upsert(
+      {
+        user_id: user.id,
+        razorpay_subscription_id: input.razorpaySubscriptionId,
+        status: "active",
+        current_period_end: periodEnd,
+      },
+      { onConflict: "user_id" },
+    )
+    .select("id");
 
-  if (error) return { ok: false, error: "Could not activate your subscription. Try again." };
+  if (error || !saved?.length) {
+    console.error("[billing] could not activate subscription:", error?.message);
+    return { ok: false, error: "Could not activate your subscription. Try again." };
+  }
   return { ok: true };
 }

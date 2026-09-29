@@ -14,11 +14,15 @@ export function GET() {
       process.env.RAZORPAY_KEY_SECRET &&
       process.env.RAZORPAY_PLAN_ID,
   );
+  // Billing writes go through the service role (the subscriptions table is
+  // RLS-locked against user writes), so a missing key breaks checkout.
+  const supabaseServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   return NextResponse.json({
-    ok: groq && supabase && razorpay,
+    ok: groq && supabase && razorpay && supabaseServiceRole,
     services: {
       supabase: supabase,
+      supabaseServiceRole: supabaseServiceRole,
       groq: groq,
       razorpay: razorpay,
       redditDiscovery: Boolean(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET),
