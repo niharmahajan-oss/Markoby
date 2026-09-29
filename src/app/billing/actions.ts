@@ -36,6 +36,28 @@ function serviceRoleKeyMissing(): boolean {
   return !process.env.SUPABASE_SERVICE_ROLE_KEY;
 }
 
+/**
+ * Billing failures were previously invisible (the founder saw only a toast and
+ * nobody could see why). Record every attempt in usage_events so checkout
+ * problems are diagnosable after the fact.
+ */
+async function logBillingEvent(
+  userId: string,
+  eventType: string,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const admin = await createAdminClient();
+    await admin.from("usage_events").insert({
+      user_id: userId,
+      event_type: eventType,
+      metadata,
+    });
+  } catch (err) {
+    console.warn("[billing] could not write event log:", err);
+  }
+}
+
 async function loadSubscriptionRow(userId: string): Promise<SubscriptionRow | null> {
   const admin = await createAdminClient();
   const { data, error } = await admin
@@ -101,8 +123,19 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
     // Guard against the silent zero-row write described above.
     if (error || !saved?.length) {
       console.error("[billing] could not persist subscription ids:", error?.message);
+      void logBillingEvent(user.id, "billing_error", {
+        stage: "persist_subscription",
+        message: error?.message ?? "zero rows written",
+      });
       return { ok: false, error: "Could not save your subscription. Try again." };
     }
+
+    void logBillingEvent(user.id, "billing_subscription_created", {
+      customer_id: customer.id,
+      subscription_id: subscription.id,
+      reused_customer: Boolean(existing?.razorpay_customer_id),
+      reused_subscription: Boolean(existing?.razorpay_subscription_id),
+    });
 
     return {
       ok: true,
@@ -112,9 +145,14 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
     };
   } catch (err) {
     console.error("[billing] startSubscription failed:", err);
+    const message = explainRazorpayError(err);
+    void logBillingEvent(user.id, "billing_error", {
+      stage: "razorpay",
+      message,
+    });
     return {
       ok: false,
-      error: `${explainRazorpayError(err)} You can retry as many times as you need — nothing was charged.`,
+      error: `${message} You can retry as many times as you need — nothing was charged.`,
     };
   }
 }
@@ -183,7 +221,16 @@ export async function activateSubscription(input: {
 
   if (error || !saved?.length) {
     console.error("[billing] could not activate subscription:", error?.message);
+    void logBillingEvent(user.id, "billing_error", {
+      stage: "activate",
+      message: error?.message ?? "zero rows written",
+    });
     return { ok: false, error: "Could not activate your subscription. Try again." };
   }
+
+  void logBillingEvent(user.id, "billing_activated", {
+    subscription_id: input.razorpaySubscriptionId,
+    payment_id: input.razorpayPaymentId,
+  });
   return { ok: true };
 }
