@@ -21,6 +21,7 @@ import {
   setProspectStatus,
 } from "@/app/projects/actions";
 import { PlatformIcon } from "@/components/platform-icon";
+import { ProjectNav } from "@/components/project-nav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -125,7 +126,8 @@ export function ProjectWorkspace(props: WorkspaceProps) {
             ))}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <ProjectNav projectId={props.projectId} />
           <Button variant="outline" size="sm" onClick={onRerunInterview}>
             <RefreshCw className="h-4 w-4" />
             Re-run interview

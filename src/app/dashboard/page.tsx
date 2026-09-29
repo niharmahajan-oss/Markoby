@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Lock, Plus, Sparkles } from "lucide-react";
+import { ArrowRight, BellRing, Clock, Lock, Plus, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,6 +6,7 @@ import { PlatformIcon } from "@/components/platform-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { SUBSCRIBE_PATH, getUserWithAccess } from "@/lib/auth";
+import { getOpenCheckinsForProjects } from "@/lib/content/checkins";
 import { listProjects } from "@/lib/projects";
 
 export const metadata = { title: "Dashboard" };
@@ -36,6 +37,30 @@ export default async function DashboardPage() {
   const projects = await listProjects(user.id);
   const subscribeHref = `${SUBSCRIBE_PATH}?reason=trial`;
 
+  // In-app notification for the weekly check-in (feature 5): anything the
+  // founder hasn't answered shows up here, not just inside the project. Grouped
+  // by project so a founder who skipped two weeks sees one row, not three.
+  let openCheckins: { projectId: string; count: number; oldestWeek: string }[] = [];
+  try {
+    const rows = await getOpenCheckinsForProjects(projects.map((project) => project.id));
+    const byProject = new Map<string, { count: number; oldestWeek: string }>();
+    for (const row of rows) {
+      const entry = byProject.get(row.project_id);
+      if (entry) {
+        entry.count += 1;
+        if (row.week_start_date < entry.oldestWeek) entry.oldestWeek = row.week_start_date;
+      } else {
+        byProject.set(row.project_id, { count: 1, oldestWeek: row.week_start_date });
+      }
+    }
+    openCheckins = [...byProject.entries()].map(([projectId, entry]) => ({
+      projectId,
+      ...entry,
+    }));
+  } catch (err) {
+    console.error("[dashboard] could not load check-ins:", err);
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -57,6 +82,45 @@ export default async function DashboardPage() {
           </Button>
         )}
       </div>
+
+      {openCheckins.length > 0 && (
+        <Card className="border-primary/25 bg-primary/5 mt-8">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div className="flex items-start gap-3">
+              <BellRing className="text-primary mt-0.5 h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-medium">
+                  {openCheckins.length === 1
+                    ? "A check-in is waiting"
+                    : `${openCheckins.length} projects have check-ins waiting`}
+                </p>
+                <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                  Tell Markoby what you posted and how it went — it rebuilds next
+                  week&apos;s plan from that.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {openCheckins.slice(0, 3).map((checkin) => {
+                const project = projects.find((row) => row.id === checkin.projectId);
+                return (
+                  <Button
+                    key={checkin.projectId}
+                    variant="outline"
+                    size="sm"
+                    render={<Link href={`/projects/${checkin.projectId}/calendar`} />}
+                  >
+                    {project?.name ?? "Project"}
+                    <span className="text-muted-foreground">
+                      · {checkin.count > 1 ? `${checkin.count} waiting` : "this week"}
+                    </span>
+                  </Button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {projects.length === 0 ? (
         <Card className="border-border/70 mt-12 border-dashed">
