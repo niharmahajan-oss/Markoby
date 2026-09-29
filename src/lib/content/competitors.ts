@@ -13,7 +13,13 @@ import { fetchSiteContext } from "@/lib/website";
  */
 
 const MAX_COMPETITORS = 2;
-const COMPETITOR_TIMEOUT_MS = 6_000;
+/**
+ * Tight on purpose: these fetches run inside the interview wrap-up server
+ * action, on top of the extraction call, and the founder is watching a spinner.
+ * Two competitors are fetched in parallel, so this bounds the added latency to
+ * roughly one timeout rather than two.
+ */
+const COMPETITOR_TIMEOUT_MS = 4_000;
 const THEME_CHARS = 420;
 
 function looksLikeDomain(value: string): boolean {
