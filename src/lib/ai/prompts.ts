@@ -18,8 +18,8 @@ export const PROMPT_VERSIONS = {
   extractor: "v2",
   plan: "v2",
   scoring: "v1",
-  draft: "v1",
-  week_plan: "v1",
+  draft: "v2",
+  week_plan: "v2",
 } as const;
 
 export const INTERVIEWER_SYSTEM_PROMPT = `You are Maya, a senior growth marketer with a decade of experience taking zero-budget startups from launch to their first thousand users on social media. You are conducting a one-on-one discovery interview with a founder to gather everything needed to build their organic marketing plan.
@@ -299,6 +299,19 @@ Rules: no invented numbers, no fake urgency, respect the founder's stated time a
 Output the draft only — no preamble, no explanation.`,
 };
 
+/**
+ * Appended to every platform draft prompt.
+ *
+ * Added after a production draft confidently invented "30 sign-ups in week one"
+ * and "a 12% conversion rate" for a founder who had reported nothing — the kind
+ * of fabrication that reads as a great post and is a liability if someone posts
+ * it as their own results. Placeholders keep the sentence useful and make the
+ * founder do the one thing only they can: supply the real number.
+ */
+export const DRAFT_NO_FABRICATION_INSTRUCTION = `
+
+HARD RULE — NEVER FABRICATE: you do not know this founder's numbers, customers, tools, channels, dates, quotes or results, and you must not invent any of them. If a sentence would be stronger with a concrete detail (a metric, a timeframe, a number of users, a channel name), write it as a bracketed placeholder the founder must replace — e.g. "we hit [X] sign-ups in [N] weeks" or "[tool] cut our onboarding from [N] to [M] steps". Never state a specific figure, percentage, date range or named third party as though it were fact. Prefer vagueness over invention when no placeholder fits.`;
+
 export function draftUserPrompt(args: {
   item: DraftSourceItem;
   summary: OnboardingSummaryData;
@@ -358,6 +371,7 @@ Rules:
 - Do not repeat the titles the founder has already used (they are listed in the user message).
 - If a "RECENT PERFORMANCE FEEDBACK" section is present, it MUST shape these items: more of what worked, none of what failed.
 - Keep each item achievable in the founder's stated time budget; reuse their communities and keywords.
+- NEVER invent the founder's results or numbers. If an item's hook needs a figure, write it as a bracketed placeholder for them to fill in (e.g. "Metric snapshot: [N] daily active users").
 
 Return ONLY valid JSON, parseable with JSON.parse, in exactly this shape:
 {"items": [{"day": "Mon", "type": "post|thread|comment|reel|short|participate|...", "title_or_hook": "concrete hook or title", "details": "what to actually write or do", "effort_minutes": 30}]}`;

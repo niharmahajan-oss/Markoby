@@ -319,9 +319,11 @@ export async function generateDraft(args: {
   userId: string | null;
   context?: GenerationContext;
 }): Promise<{ content: string; modelUsed: string; promptVersion: string } | null> {
-  const { DRAFT_SYSTEM_PROMPTS, draftUserPrompt } = await import("./prompts");
-  const system = DRAFT_SYSTEM_PROMPTS[args.item.platform];
-  if (!system) throw new Error(`No draft prompt for platform: ${args.item.platform}`);
+  const { DRAFT_NO_FABRICATION_INSTRUCTION, DRAFT_SYSTEM_PROMPTS, draftUserPrompt } =
+    await import("./prompts");
+  const base = DRAFT_SYSTEM_PROMPTS[args.item.platform];
+  if (!base) throw new Error(`No draft prompt for platform: ${args.item.platform}`);
+  const system = base + DRAFT_NO_FABRICATION_INSTRUCTION;
   const model = MODEL_BY_TASK["draft"];
   const raw = await groqChat({
     task: "draft",
