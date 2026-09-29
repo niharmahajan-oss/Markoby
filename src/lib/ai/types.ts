@@ -15,6 +15,12 @@ export const PLATFORM_META: Record<
   youtube: { label: "YouTube", prospectDiscovery: "api" },
 };
 
+export type CompetitorMention = {
+  name: string;
+  /** Website the founder named or implied, if any. */
+  website?: string;
+};
+
 export type OnboardingSummaryData = {
   business_description: string;
   target_audience: string;
@@ -24,6 +30,28 @@ export type OnboardingSummaryData = {
   previous_attempts: string;
   constraints: string;
   goals: string;
+  /** Competitors the founder named (optional interview beat, may be empty). */
+  competitors?: CompetitorMention[];
+};
+
+/** Extra grounding passed into plan/draft generation. */
+export type GenerationContext = {
+  /** Compact summary of recent post_feedback + check-in replies, if any. */
+  feedbackSummary?: string;
+  /** Lightweight competitor scan, if the founder named competitors. */
+  competitorNotes?: string;
+};
+
+/** One calendar item handed to the draft generator. */
+export type DraftSourceItem = {
+  platform: Platform;
+  week?: number;
+  day?: string | null;
+  type?: string | null;
+  title_or_hook: string;
+  details?: string | null;
+  effort_minutes?: number | null;
+  scheduled_date?: string | null;
 };
 
 export type PlanWeekItem = {
@@ -66,3 +94,6 @@ export type ProspectCandidate = {
 };
 
 export type ScoredProspect = { relevance_score: number; relevance_reason: string };
+
+/** A week of freshly generated calendar items (week extension from a check-in). */
+export type GeneratedWeek = { items: PlanWeekItem[] };

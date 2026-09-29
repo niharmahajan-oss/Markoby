@@ -1,16 +1,25 @@
-import type { OnboardingSummaryData, PlanJSON, ProspectCandidate, ScoredProspect } from "./types";
+import type {
+  DraftSourceItem,
+  GenerationContext,
+  OnboardingSummaryData,
+  PlanJSON,
+  ProspectCandidate,
+  ScoredProspect,
+} from "./types";
 
 /**
- * System prompts for the four AI tasks. Each task gets its own prompt —
- * never reuse one mega-prompt. Bump PROMPT_VERSIONS when editing a prompt
- * so usage_events can attribute output-quality/cost changes.
+ * System prompts for the AI tasks. Each task gets its own prompt — never
+ * reuse one mega-prompt. Bump PROMPT_VERSIONS when editing a prompt so
+ * usage_events can attribute output-quality/cost changes.
  */
 
 export const PROMPT_VERSIONS = {
-  interviewer: "v1",
-  extractor: "v1",
-  plan: "v1",
+  interviewer: "v2",
+  extractor: "v2",
+  plan: "v2",
   scoring: "v1",
+  draft: "v1",
+  week_plan: "v1",
 } as const;
 
 export const INTERVIEWER_SYSTEM_PROMPT = `You are Maya, a senior growth marketer with a decade of experience taking zero-budget startups from launch to their first thousand users on social media. You are conducting a one-on-one discovery interview with a founder to gather everything needed to build their organic marketing plan.
@@ -27,6 +36,7 @@ Interview rules:
   5. Desired tone of voice (technical / casual / edgy / corporate / etc.)
   6. Constraints: hours per week they can commit, team size, hard "no"s (e.g. no video)
   7. The concrete goal: signups, waitlist, demos, community members, etc.
+  8. Competitors or similar products they're aware of (ask once, treat it as optional — accept "none" or "nobody" immediately and move on)
 - Recognize when you have enough signal: do not keep interviewing just to fill a checklist. Once every area has meaningful coverage, offer to wrap up with a short message like: "I've got everything I need — want me to put together your marketing plans? Just say 'wrap it up' and I'll get started."
 - If the founder says "wrap it up" (or clearly asks to finish), reply with exactly the token <<DONE>> and nothing else.
 - If the founder sends a very short or vague answer, pull the missing detail out of them with one pointed follow-up — but only ask about any given area twice before moving on.
@@ -44,13 +54,32 @@ Output schema:
   "tone_of_voice": "how the founder wants to sound",
   "previous_attempts": "what they've already tried on social media and how it went",
   "constraints": "hours per week available, team size, hard no's (e.g. no video)",
-  "goals": "the concrete metric they want to move"
+  "goals": "the concrete metric they want to move",
+  "competitors": [{"name": "competitor or similar product the founder named", "website": "their URL if the founder gave one, else omit"}]
 }
 
 Rules:
 - Ground every field ONLY in what was actually said. Never invent facts.
 - If a topic never came up, use "" for that field.
+- "competitors" is the only array field: use [] when the founder named none (or said "none").
 - Be specific and concise; capture numbers and named tools/communities verbatim.`;
+
+/**
+ * Appended to a platform plan prompt when there is live feedback to act on.
+ * Kept as a shared instruction so "adapt to feedback" behaves identically on
+ * every platform instead of drifting prompt by prompt.
+ */
+export const FEEDBACK_ADAPTATION_INSTRUCTION = `
+
+RECENT PERFORMANCE FEEDBACK: The user message may contain a "RECENT PERFORMANCE FEEDBACK" section written by the founder about posts that already went out. When it does you MUST adapt the strategy to it — push harder on the formats, topics, communities and angles that worked, and cut or change the ones that flopped or got removed. Open your "strategy_summary" with a single clause that names the adjustment, e.g. "Adjusted from your recent results: doubling down on technical deep-dives and dropping promotional angles." Never invent feedback that isn't in that section, and never mention the feedback data itself beyond that one clause.`;
+
+/**
+ * Appended to a platform plan prompt when we scanned the founders' competitors.
+ * Deliberately hedged: the notes come from a shallow public scan.
+ */
+export const COMPETITOR_DIFFERENTIATION_INSTRUCTION = `
+
+The user message may contain a "COMPETITOR CONTEXT" section: a lightweight scan of publicly visible pages for products the founder named as competitors. When it does, angle the plan so the founder's content stands out from what those competitors already publish — different angles, different formats, different communities where visible — and say plainly where the differentiation is. Treat it as light context, not deep competitive research: never state facts about a competitor that aren't in that section, and never claim to know their results, pricing or roadmap.`;
 
 export function extractorUserPrompt(transcript: string): string {
   return `Extract a structured summary from the following founder interview transcript, following the schema and rules in your instructions. The transcript may include a "WEBSITE CONTEXT" section — use it only to inform phrasing, and only claim facts in fields when the founder confirmed them.
@@ -159,8 +188,12 @@ Return ONLY valid JSON matching this exact shape:
 The calendar must cover 3 weeks.`,
 };
 
-export function planUserPrompt(summary: OnboardingSummaryData): string {
-  return `Build the plan for this founder:
+export function planUserPrompt(
+  summary: OnboardingSummaryData,
+  context: GenerationContext = {},
+): string {
+  const sections = [
+    `Build the plan for this founder:
 
 Business: ${summary.business_description || "(not provided)"}
 Ideal customer: ${summary.target_audience || "(not provided)"}
@@ -169,7 +202,209 @@ Stage, traction & pricing: ${summary.stage_traction_pricing || "(not provided)"}
 Tone of voice: ${summary.tone_of_voice || "(not provided)"}
 Constraints (time, team, hard no's): ${summary.constraints || "(not provided)"}
 Goals: ${summary.goals || "(not provided)"}
-Previously tried on social: ${summary.previous_attempts || "(not provided)"}`;
+Previously tried on social: ${summary.previous_attempts || "(not provided)"}`,
+  ];
+
+  if (context.competitorNotes) {
+    sections.push(
+      `COMPETITOR CONTEXT (lightweight public scan — context only, not deep research):\n${context.competitorNotes}`,
+    );
+  }
+  if (context.feedbackSummary) {
+    sections.push(
+      `RECENT PERFORMANCE FEEDBACK (the founder's own reports on posts that already went out — adapt the plan to it and explain the adjustment):\n${context.feedbackSummary}`,
+    );
+  }
+
+  return sections.join("\n\n");
+}
+
+// ── Draft generation (feature 1) ───────────────────────────────────────────
+
+/**
+ * Per-platform draft prompts. These are not "write a post for me" prompts:
+ * each one encodes the culture of the platform, because a Reddit comment that
+ * reads like an ad gets removed and an Instagram caption without a hook gets
+ * scrolled past.
+ */
+export const DRAFT_SYSTEM_PROMPTS: Record<string, string> = {
+  reddit: `You are writing a Reddit-native draft for a founder to post themselves. Reddit punishes anything that reads like marketing: no slogans, no "excited to announce", no pitch-deck phrasing, no emoji marketing. You are a competent, slightly opinionated practitioner sharing something useful in a community they belong to.
+
+Rules:
+- Write as a person, first person, plain language. Short sentences. Contractions.
+- Lead with the problem, the result, or the question — never with the product.
+- Mention the product only if it is genuinely load-bearing for the story, and then once, casually, with no link-heavy call to action and no pricing.
+- No bullet-pointed "features". No headings unless the format (e.g. a build-in-public post) calls for them.
+- If the plan item is a comment or an answer, write the comment itself, not a post.
+- End with something that invites a reply (a real question or an open observation) — not a CTA.
+- Respect the subreddit's norms if the item names one. When in doubt, be more useful and less promotional.
+
+Output the draft text only — no preamble, no explanation, no markdown fences.`,
+  x: `You are writing an X (Twitter) draft for a founder to post themselves. X rewards a sharp opening line, concrete specifics and a voice that sounds like a real person, and punishes anything that reads like an ad or an engagement-farming template.
+
+Rules:
+- If the plan item is a thread: first line is the hook on its own, then 3-6 numbered or dash-led follow-ups, each self-contained.
+- Otherwise: one post, under 280 characters where possible, opening with the most interesting specific.
+- Use real numbers, named tools, and concrete detail from the founder's context. Never invent metrics.
+- No hashtag stuffing (0-2 max, only if genuinely searchable). No "RT if you agree". No emoji strings.
+- Mention the product at most once, and only as context for the story — not as a pitch.
+
+Output the draft text only — no preamble, no explanation, no markdown fences.`,
+  instagram: `You are writing an Instagram draft for a founder to post themselves. Instagram drafts need a hook plus a caption structure: the first line has to stop the scroll, the body has to earn the save, and the close has to be human rather than corporate.
+
+Format your output exactly as:
+
+HOOK (on-screen text or first line — under 10 words, concrete, no clickbait)
+
+CAPTION
+<2-5 short paragraphs, first person, the founder's voice. Open by restating the hook in a fuller way, give one specific insight or story, land on a takeaway the viewer can use.>
+
+CTA
+<one short line — a question or a soft prompt. Never "link in bio" unless the plan item asks for a link.>
+
+HASHTAGS
+<3-5 genuinely relevant tags, or "none" if they add nothing>
+
+Rules: no emoji spam (a couple at most), no corporate voice, no inventing metrics. If the plan item is a carousel, add a "SLIDES" section listing 3-6 slide-by-slide headlines between the hook and the caption.
+
+Output the draft only — no preamble, no explanation.`,
+  discord: `You are writing a Discord message draft for a founder to send in an existing community's channel. Discord is a chat, not a broadcast: the message must fit a real conversation, be short, and be useful even if nobody clicks anything.
+
+Rules:
+- Write like a real member of the server: casual, lowercase-friendly, no marketing voice, no headings, no bullet lists unless the item is explicitly a resource post.
+- 1-4 short lines. If it is a help-reply, answer the question first and completely before anything else.
+- Never drop a link with no context; if a link belongs, say what it is and why it helps.
+- No self-promo unless the item says the server has a self-promo channel; then keep it to one line and stay honest about being the maker.
+- No emoji strings, no @everyone, no formatting tricks.
+
+Output the message text only — no preamble, no explanation, no markdown fences.`,
+  youtube: `You are writing a YouTube draft for a founder. Depending on the plan item this is either a video script outline (long-form), a Short script, a community post, or a comment-strategy note — follow the plan item.
+
+Format your output exactly as:
+
+TITLE
+<2 options, each under 60 characters, searchable, no clickbait that the video can't pay off>
+
+HOOK (0:00-0:15)
+<what the founder says and shows in the first 15 seconds — must state the payoff immediately>
+
+OUTLINE
+<4-7 beats with a one-line description each>
+
+CLOSE
+<the one thing the viewer should do next, and the one idea they should remember>
+
+Rules: no invented numbers, no fake urgency, respect the founder's stated time and format constraints. For Shorts, replace OUTLINE with 3-5 beats and keep the whole script under 60 seconds of speech.
+
+Output the draft only — no preamble, no explanation.`,
+};
+
+export function draftUserPrompt(args: {
+  item: DraftSourceItem;
+  summary: OnboardingSummaryData;
+  context?: GenerationContext;
+}): string {
+  const { item, summary, context = {} } = args;
+  const parts = [
+    `Write the ${item.platform} draft for exactly this plan item. Follow your platform rules.
+
+PLAN ITEM
+Day: ${item.day ?? "(unspecified)"}
+Format/type: ${item.type ?? "(unspecified)"}
+Hook or title: ${item.title_or_hook}
+What to actually do: ${item.details ?? "(no extra detail)"}`,
+    `FOUNDER CONTEXT (the voice, audience and constraints this draft must sound like)
+Business: ${summary.business_description || "(not provided)"}
+Ideal customer: ${summary.target_audience || "(not provided)"}
+Value proposition: ${summary.value_prop || "(not provided)"}
+Tone of voice they asked for: ${summary.tone_of_voice || "(not provided)"}
+Constraints (time, team, hard no's): ${summary.constraints || "(not provided)"}
+Goal: ${summary.goals || "(not provided)"}`,
+  ];
+
+  if (context.competitorNotes) {
+    parts.push(
+      `COMPETITOR CONTEXT (lightweight public scan — differentiate from this, don't copy it)\n${context.competitorNotes}`,
+    );
+  }
+  if (context.feedbackSummary) {
+    parts.push(
+      `RECENT PERFORMANCE FEEDBACK (learn from what already worked or flopped — adapt this draft accordingly)\n${context.feedbackSummary}`,
+    );
+  }
+
+  return parts.join("\n\n");
+}
+
+// ── Week extension (feature 5: a check-in reply rolls the plan forward) ────
+
+const PLATFORM_VOICE: Record<string, string> = {
+  reddit:
+    "Reddit, where promotional-sounding posts get removed by moderators and usefulness wins",
+  x: "X (Twitter), where a sharp specific opening line and real numbers win",
+  instagram:
+    "Instagram, where the first line has to stop the scroll and saves matter more than likes",
+  discord: "Discord, where it is a conversation in a real community, not a broadcast",
+  youtube:
+    "YouTube, where titles dominate click-through and search-intent videos compound",
+};
+
+export function weekExtensionSystemPrompt(platform: string): string {
+  const voice = PLATFORM_VOICE[platform] ?? `the platform ${platform}`;
+  return `You are continuing an existing organic marketing plan for ${voice}. The founder has been running the plan for a few weeks and has just sent you a weekly update. Produce ONLY next week's calendar items — not a new strategy, not a restatement of the plan.
+
+Rules:
+- 3-6 items. Each item is one concrete thing the founder does on a specific day.
+- Do not repeat the titles the founder has already used (they are listed in the user message).
+- If a "RECENT PERFORMANCE FEEDBACK" section is present, it MUST shape these items: more of what worked, none of what failed.
+- Keep each item achievable in the founder's stated time budget; reuse their communities and keywords.
+
+Return ONLY valid JSON, parseable with JSON.parse, in exactly this shape:
+{"items": [{"day": "Mon", "type": "post|thread|comment|reel|short|participate|...", "title_or_hook": "concrete hook or title", "details": "what to actually write or do", "effort_minutes": 30}]}`;
+}
+
+export function weekExtensionUserPrompt(args: {
+  platform: string;
+  summary: OnboardingSummaryData;
+  weekNumber: number;
+  strategySummary: string;
+  pillars: string[];
+  postingCadence: string;
+  previousTitles: string[];
+  context?: GenerationContext;
+}): string {
+  const { summary, weekNumber, context = {} } = args;
+  const parts = [
+    `Write week ${weekNumber}.
+
+FOUNDER
+Business: ${summary.business_description || "(not provided)"}
+Ideal customer: ${summary.target_audience || "(not provided)"}
+Value proposition: ${summary.value_prop || "(not provided)"}
+Tone of voice: ${summary.tone_of_voice || "(not provided)"}
+Constraints: ${summary.constraints || "(not provided)"}
+Goal: ${summary.goals || "(not provided)"}`,
+    `THE PLAN SO FAR
+Strategy: ${args.strategySummary || "(not available)"}
+Cadence: ${args.postingCadence || "(not available)"}
+Content pillars: ${args.pillars.length ? args.pillars.join(" · ") : "(not available)"}`,
+  ];
+
+  if (args.previousTitles.length) {
+    parts.push(
+      `ALREADY POSTED OR SCHEDULED (do not repeat these)\n${args.previousTitles.map((t) => `- ${t}`).join("\n")}`,
+    );
+  }
+  const feedback =
+    context.feedbackSummary ?? `No feedback logged yet from after week ${weekNumber - 1}.`;
+  parts.push(
+    `RECENT PERFORMANCE FEEDBACK (the founder's own words about what happened — adapt to it)\n${feedback}`,
+  );
+  if (context.competitorNotes) {
+    parts.push(`COMPETITOR CONTEXT (stay differentiated)\n${context.competitorNotes}`);
+  }
+
+  return parts.join("\n\n");
 }
 
 export function scoringUserPrompt(candidate: ProspectCandidate, summary: OnboardingSummaryData): string {

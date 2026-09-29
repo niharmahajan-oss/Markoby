@@ -17,14 +17,19 @@ export function GET() {
   // Billing writes go through the service role (the subscriptions table is
   // RLS-locked against user writes), so a missing key breaks checkout.
   const supabaseServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  // The weekly check-in job refuses to run without CRON_SECRET (see
+  // /api/cron/checkins) — surfaced here so a silent retention feature is visible.
+  const cron = Boolean(process.env.CRON_SECRET);
 
   return NextResponse.json({
-    ok: groq && supabase && razorpay && supabaseServiceRole,
+    ok: groq && supabase && razorpay && supabaseServiceRole && cron,
     services: {
       supabase: supabase,
       supabaseServiceRole: supabaseServiceRole,
       groq: groq,
       razorpay: razorpay,
+      cron: cron,
+      checkinEmail: Boolean(process.env.RESEND_API_KEY),
       redditDiscovery: Boolean(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET),
       youtubeDiscovery: Boolean(process.env.YOUTUBE_API_KEY),
     },

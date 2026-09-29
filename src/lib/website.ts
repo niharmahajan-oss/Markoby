@@ -18,7 +18,15 @@ const FETCH_TIMEOUT_MS = 10_000;
 const MAX_HTML_BYTES = 2_000_000;
 const MAX_TEXT_CHARS = 4000;
 
-export async function fetchSiteContext(rawUrl: string): Promise<SiteContext> {
+/**
+ * `timeoutMs` lets callers bound a batch of fetches (the optional competitor
+ * scan runs two of these in parallel inside a server action) without loosening
+ * the default.
+ */
+export async function fetchSiteContext(
+  rawUrl: string,
+  options: { timeoutMs?: number; maxTextChars?: number } = {},
+): Promise<SiteContext> {
   let url = rawUrl.trim();
   if (!url) throw new Error("Empty URL");
   if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
@@ -29,7 +37,7 @@ export async function fetchSiteContext(rawUrl: string): Promise<SiteContext> {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? FETCH_TIMEOUT_MS);
 
   let html: string;
   try {
@@ -79,7 +87,7 @@ export async function fetchSiteContext(rawUrl: string): Promise<SiteContext> {
     url: parsed.toString(),
     title: title.slice(0, 300),
     description: description.slice(0, 500),
-    textSample: bodyText.slice(0, MAX_TEXT_CHARS),
+    textSample: bodyText.slice(0, options.maxTextChars ?? MAX_TEXT_CHARS),
   };
 }
 

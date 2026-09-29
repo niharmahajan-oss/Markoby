@@ -1,8 +1,12 @@
 import "server-only";
 
 import type {
+  Checkin,
   MarketingPlan,
   OnboardingMessage,
+  PlanItem,
+  PostDraft,
+  PostFeedback,
   Project,
   ProjectPlatform,
   Prospect,
@@ -74,6 +78,50 @@ export async function getProjectProspects(projectId: string): Promise<Prospect[]
     .order("relevance_score", { ascending: false, nullsFirst: false })
     .order("discovered_at", { ascending: false });
   return (data ?? []) as Prospect[];
+}
+
+// ── Content operations (migration 0002) ────────────────────────────────────
+
+export async function getProjectPlanItems(projectId: string): Promise<PlanItem[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("plan_items")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("scheduled_date", { ascending: true, nullsFirst: false })
+    .order("sort_order", { ascending: true });
+  return (data ?? []) as unknown as PlanItem[];
+}
+
+export async function getProjectDrafts(projectId: string): Promise<PostDraft[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("post_drafts")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("generated_at", { ascending: true });
+  return (data ?? []) as unknown as PostDraft[];
+}
+
+export async function getProjectFeedback(projectId: string): Promise<PostFeedback[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("post_feedback")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("submitted_at", { ascending: false });
+  return (data ?? []) as unknown as PostFeedback[];
+}
+
+export async function getProjectCheckins(projectId: string): Promise<Checkin[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("checkins")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("week_start_date", { ascending: false })
+    .limit(12);
+  return (data ?? []) as unknown as Checkin[];
 }
 
 export async function getOnboardingSummary(projectId: string) {

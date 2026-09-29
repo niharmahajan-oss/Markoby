@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { extractOnboardingSummary } from "@/lib/ai/groq";
 import type { Platform } from "@/lib/ai/types";
+import { scanCompetitors } from "@/lib/content/competitors";
 import {
   FREE_TRIAL_PROJECTS,
   SUBSCRIBE_PATH,
@@ -104,6 +105,16 @@ export async function finishInterview(projectId: string): Promise<FinishResult> 
     return { ok: false, error: "Could not summarize the interview. Try again." };
   }
 
+  // Optional competitor scan (feature 4). Two parallel page fetches, bounded by
+  // their own timeout, and never allowed to fail the interview wrap-up.
+  let competitorNotes: string | null = null;
+  try {
+    const notes = await scanCompetitors(summary.competitors);
+    competitorNotes = notes || null;
+  } catch (err) {
+    console.warn("[projects] competitor scan failed:", err);
+  }
+
   const { error: summaryError } = await supabase.from("onboarding_summary").upsert({
     project_id: projectId,
     business_description: summary.business_description ?? "",
@@ -111,6 +122,7 @@ export async function finishInterview(projectId: string): Promise<FinishResult> 
     value_prop: summary.value_prop ?? "",
     tone_of_voice: summary.tone_of_voice ?? "",
     constraints: summary.constraints ?? "",
+    competitor_notes: competitorNotes,
     raw_json: summary as unknown as Record<string, unknown>,
   });
 

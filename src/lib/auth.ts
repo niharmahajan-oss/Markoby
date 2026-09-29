@@ -17,7 +17,7 @@ export const BILLING_INACTIVE_PATH = "/billing/inactive";
  * Next uses thrown "errors" for control flow (dynamic-rendering bailouts,
  * redirects, notFound). They must never be swallowed by our catch blocks.
  */
-function isNextControlFlowError(err: unknown): boolean {
+export function isNextControlFlowError(err: unknown): boolean {
   const digest = (err as { digest?: unknown } | null)?.digest;
   return (
     typeof digest === "string" &&

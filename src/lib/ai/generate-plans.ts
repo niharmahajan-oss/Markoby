@@ -1,7 +1,11 @@
 import "server-only";
 
 import { generatePlan } from "@/lib/ai/groq";
-import type { OnboardingSummaryData } from "@/lib/ai/types";
+import {
+  ensurePlanItemsForProject,
+  syncPlanItemsForPlan,
+} from "@/lib/content/plan-items";
+import { loadProjectGenerationContext } from "@/lib/content/summary";
 import { createAdminClient } from "@/lib/supabase/server";
 
 /**
@@ -9,22 +13,22 @@ import { createAdminClient } from "@/lib/supabase/server";
  * still pending, using the onboarding_summary as grounding. Runs via after()
  * so the founder's navigation isn't blocked; the project page polls plan
  * status and shows a "generating…" state per platform.
+ *
+ * Each plan that lands ready is immediately normalized into `plan_items` so the
+ * content calendar has real, queryable, date-bearing rows.
  */
 export async function kickOffPlanGeneration(projectId: string, userId: string) {
   const supabase = await createAdminClient();
 
-  const { data: summaryRow } = await supabase
-    .from("onboarding_summary")
-    .select("*")
-    .eq("project_id", projectId)
-    .maybeSingle();
+  const [loaded, { data: plans }] = await Promise.all([
+    loadProjectGenerationContext(projectId),
+    supabase
+      .from("marketing_plans")
+      .select("id, platform, status")
+      .eq("project_id", projectId),
+  ]);
 
-  const { data: plans } = await supabase
-    .from("marketing_plans")
-    .select("id, platform, status")
-    .eq("project_id", projectId);
-
-  if (!summaryRow) {
+  if (!loaded) {
     for (const plan of plans ?? []) {
       await supabase
         .from("marketing_plans")
@@ -33,18 +37,6 @@ export async function kickOffPlanGeneration(projectId: string, userId: string) {
     }
     return;
   }
-
-  const raw = summaryRow.raw_json;
-  const summary: OnboardingSummaryData = {
-    business_description: summaryRow.business_description,
-    target_audience: summaryRow.target_audience,
-    value_prop: summaryRow.value_prop,
-    tone_of_voice: summaryRow.tone_of_voice,
-    constraints: summaryRow.constraints ?? "",
-    stage_traction_pricing: (raw as unknown as OnboardingSummaryData | null)?.stage_traction_pricing ?? "",
-    previous_attempts: (raw as unknown as OnboardingSummaryData | null)?.previous_attempts ?? "",
-    goals: (raw as unknown as OnboardingSummaryData | null)?.goals ?? "",
-  };
 
   const pending = (plans ?? []).filter((p) => p.status !== "ready");
 
@@ -55,7 +47,12 @@ export async function kickOffPlanGeneration(projectId: string, userId: string) {
       .eq("id", plan.id);
 
     try {
-      const result = await generatePlan(plan.platform, summary, userId);
+      const result = await generatePlan(
+        plan.platform,
+        loaded.summary,
+        userId,
+        loaded.context,
+      );
       if (!result) throw new Error("Model returned unparseable JSON");
 
       const { error } = await supabase
@@ -70,6 +67,14 @@ export async function kickOffPlanGeneration(projectId: string, userId: string) {
         })
         .eq("id", plan.id);
       if (error) throw new Error(error.message);
+
+      // Turn the fresh plan_json into real calendar rows with suggested dates.
+      await syncPlanItemsForPlan({
+        projectId,
+        planId: plan.id,
+        platform: plan.platform,
+        planJson: result.planJson,
+      });
     } catch (err) {
       console.error(`[plans] generation failed for ${plan.platform}:`, err);
       await supabase
@@ -82,10 +87,18 @@ export async function kickOffPlanGeneration(projectId: string, userId: string) {
     }
   }
 
+  // Plans that were already ready (regeneration re-runs, plans generated before
+  // the calendar existed) still need their rows.
+  try {
+    await ensurePlanItemsForProject(projectId);
+  } catch (err) {
+    console.error("[plans] calendar sync failed:", err);
+  }
+
   // Plans done → run prospect discovery where the platform APIs allow it.
   try {
     const { discoverProspectsForProject } = await import("@/lib/ai/discover-prospects");
-    await discoverProspectsForProject(projectId, userId, summary);
+    await discoverProspectsForProject(projectId, userId, loaded.summary);
   } catch (err) {
     console.error("[plans] prospect discovery failed:", err);
   }

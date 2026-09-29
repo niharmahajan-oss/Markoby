@@ -4,7 +4,15 @@ import Groq from "groq-sdk";
 
 import { GROQ_MODELS } from "./models";
 import { PROMPT_VERSIONS } from "./prompts";
-import type { OnboardingSummaryData, ProspectCandidate } from "./types";
+import type {
+  DraftSourceItem,
+  GeneratedWeek,
+  GenerationContext,
+  OnboardingSummaryData,
+  PlanJSON,
+  PlanWeekItem,
+  ProspectCandidate,
+} from "./types";
 
 /**
  * Central, server-only Groq client. Every AI call in the app funnels through
@@ -31,6 +39,10 @@ const MODEL_BY_TASK: Record<string, string> = {
   extractor: GROQ_MODELS.primary,
   plan: GROQ_MODELS.primary,
   scoring: GROQ_MODELS.fast,
+  // Drafts are generated one at a time, on demand — the founder's Groq spend
+  // goes where they asked for it, so quality wins over the cheaper model.
+  draft: GROQ_MODELS.primary,
+  week_plan: GROQ_MODELS.primary,
 };
 
 /** Maps a Groq task to the prompt version that produced it. */
@@ -44,6 +56,10 @@ function promptVersionFor(task: string): string {
       return PROMPT_VERSIONS.plan;
     case "scoring":
       return PROMPT_VERSIONS.scoring;
+    case "draft":
+      return PROMPT_VERSIONS.draft;
+    case "week_plan":
+      return PROMPT_VERSIONS.week_plan;
     default:
       return "unknown";
   }
@@ -262,15 +278,28 @@ export async function generatePlan(
   platform: string,
   summary: OnboardingSummaryData,
   userId: string | null,
+  context: GenerationContext = {},
 ): Promise<{ planJson: unknown; modelUsed: string; promptVersion: string } | null> {
-  const { PLATFORM_PLAN_PROMPTS, planUserPrompt } = await import("./prompts");
-  const system = PLATFORM_PLAN_PROMPTS[platform];
-  if (!system) throw new Error(`No plan prompt for platform: ${platform}`);
+  const {
+    COMPETITOR_DIFFERENTIATION_INSTRUCTION,
+    FEEDBACK_ADAPTATION_INSTRUCTION,
+    PLATFORM_PLAN_PROMPTS,
+    planUserPrompt,
+  } = await import("./prompts");
+  const base = PLATFORM_PLAN_PROMPTS[platform];
+  if (!base) throw new Error(`No plan prompt for platform: ${platform}`);
+  const system = [
+    base,
+    context.competitorNotes ? COMPETITOR_DIFFERENTIATION_INSTRUCTION : "",
+    context.feedbackSummary ? FEEDBACK_ADAPTATION_INSTRUCTION : "",
+  ]
+    .filter(Boolean)
+    .join("");
   const model = MODEL_BY_TASK["plan"];
   const raw = await groqChat({
     task: "plan",
     system,
-    user: planUserPrompt(summary),
+    user: planUserPrompt(summary, context),
     userId,
     temperature: 0.8,
     maxTokens: 8192,
@@ -278,6 +307,87 @@ export async function generatePlan(
   const planJson = parseJsonFromModel(raw);
   if (!planJson) return null;
   return { planJson, modelUsed: model, promptVersion: PROMPT_VERSIONS.plan };
+}
+
+/**
+ * One-shot draft for a single calendar item. Never called in bulk: the UI only
+ * invokes it when the founder clicks "Generate draft" on a specific item.
+ */
+export async function generateDraft(args: {
+  item: DraftSourceItem;
+  summary: OnboardingSummaryData;
+  userId: string | null;
+  context?: GenerationContext;
+}): Promise<{ content: string; modelUsed: string; promptVersion: string } | null> {
+  const { DRAFT_SYSTEM_PROMPTS, draftUserPrompt } = await import("./prompts");
+  const system = DRAFT_SYSTEM_PROMPTS[args.item.platform];
+  if (!system) throw new Error(`No draft prompt for platform: ${args.item.platform}`);
+  const model = MODEL_BY_TASK["draft"];
+  const raw = await groqChat({
+    task: "draft",
+    system,
+    user: draftUserPrompt({
+      item: args.item,
+      summary: args.summary,
+      context: args.context,
+    }),
+    userId: args.userId,
+    temperature: 0.75,
+    maxTokens: 1600,
+  });
+  const content = raw.replace(/^```[a-z]*\s*/i, "").replace(/```\s*$/, "").trim();
+  if (!content) return null;
+  return { content, modelUsed: model, promptVersion: PROMPT_VERSIONS.draft };
+}
+
+/**
+ * Extends a plan by one week, used when a founder answers a weekly check-in.
+ * Receives the existing plan plus the feedback context so week N+1 reflects
+ * what actually happened in weeks 1..N.
+ */
+export async function generateWeekItems(args: {
+  platform: string;
+  summary: OnboardingSummaryData;
+  weekNumber: number;
+  existingPlan: PlanJSON | null;
+  previousTitles: string[];
+  userId: string | null;
+  context?: GenerationContext;
+}): Promise<{ items: PlanWeekItem[]; modelUsed: string; promptVersion: string } | null> {
+  const { weekExtensionSystemPrompt, weekExtensionUserPrompt } = await import("./prompts");
+  const model = MODEL_BY_TASK["week_plan"];
+  const raw = await groqChat({
+    task: "week_plan",
+    system: weekExtensionSystemPrompt(args.platform),
+    user: weekExtensionUserPrompt({
+      platform: args.platform,
+      summary: args.summary,
+      weekNumber: args.weekNumber,
+      strategySummary: args.existingPlan?.strategy_summary ?? "",
+      pillars: (args.existingPlan?.content_pillars ?? []).map((p) => p.name),
+      postingCadence: args.existingPlan?.posting_cadence ?? "",
+      previousTitles: args.previousTitles,
+      context: args.context,
+    }),
+    userId: args.userId,
+    temperature: 0.8,
+    maxTokens: 2000,
+  });
+  const parsed = parseJsonFromModel<GeneratedWeek>(raw);
+  const items = Array.isArray(parsed?.items) ? parsed.items : [];
+  const cleaned = items
+    .filter((item) => item && typeof item.title_or_hook === "string" && item.title_or_hook.trim())
+    .map((item) => ({
+      day: String(item.day ?? ""),
+      type: String(item.type ?? "post"),
+      title_or_hook: item.title_or_hook.trim(),
+      details: String(item.details ?? ""),
+      effort_minutes: Number.isFinite(Number(item.effort_minutes))
+        ? Math.max(0, Math.round(Number(item.effort_minutes)))
+        : 30,
+    }));
+  if (cleaned.length === 0) return null;
+  return { items: cleaned, modelUsed: model, promptVersion: PROMPT_VERSIONS.week_plan };
 }
 
 export async function scoreProspect(
