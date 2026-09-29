@@ -112,6 +112,21 @@ throttles bursts of API calls and reports that as `401 Authentication failed`,
 which is why the billing helpers retry transient failures with backoff and
 the real provider message is surfaced in the UI rather than a generic error.
 
+Two traps worth knowing:
+
+1. Razorpay rejects a second customer for the same email with *"Customer
+already exists for the merchant"* — customer creation therefore passes
+`fail_existing: "0"` so it returns the existing customer instead of failing
+(the old behaviour made the first checkout work and every retry after it fail).
+2. Billing writes use the **service-role** client. `subscriptions` has no
+user-facing UPDATE policy (so nobody can self-activate), and a user-scoped
+write is silently discarded: Supabase answers `200` with an empty array and no
+error. Reads/writes that must not vanish go through `createAdminClient()`.
+
+Every checkout attempt is recorded in `usage_events` (`billing_subscription_created`,
+`billing_activated`, `billing_error` with the provider's message), so payment
+problems can be diagnosed after the fact instead of from a screenshot.
+
 **Free trial.** `FREE_TRIAL_PROJECTS` (in `src/lib/auth.ts`) controls how many
 projects a signed-in user can create before a subscription is required. It is
 enforced server-side in `createProject()`, and the dashboard, new-project and
