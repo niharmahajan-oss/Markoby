@@ -52,16 +52,26 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
 
   async function onSubscribe() {
     setStarting(true);
-    const loaded = await loadRazorpayScript();
-    if (!loaded || !window.Razorpay) {
-      toast.error("Couldn't reach Razorpay. Check your connection and retry.");
+
+    // Create (or resume) the Razorpay subscription first — that's where a
+    // provider error can actually happen, and it fails fast.
+    const result = await startSubscription();
+    if (!result.ok) {
+      toast.error(result.error, { duration: 9000 });
       setStarting(false);
       return;
     }
 
-    const result = await startSubscription();
-    if (!result.ok) {
-      toast.error(result.error);
+    const loaded = await loadRazorpayScript();
+    if (!loaded || !window.Razorpay) {
+      // Checkout.js can be blocked by ad-blockers or offline networks; Razorpay
+      // hosts the same flow on a short link we already have.
+      if (result.shortUrl) {
+        toast.info("Opening Razorpay's secure checkout page…");
+        window.location.href = result.shortUrl;
+        return;
+      }
+      toast.error("Couldn't reach Razorpay. Check your connection and retry.");
       setStarting(false);
       return;
     }
@@ -92,7 +102,7 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
       modal: {
         ondismiss: () => {
           setStarting(false);
-          toast.info("Checkout closed before completing. You can retry anytime.");
+          toast.info("Checkout closed before completing. You can retry as many times as you like.");
         },
       },
     });
@@ -108,6 +118,7 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
       </div>
       <ul className="mt-8 space-y-3 text-sm">
         {[
+          "Unlimited projects — your first one is free",
           "AI onboarding interview that actually understands your product",
           "Organic marketing plans for Reddit, X, Instagram, Discord & YouTube",
           "Prospect lists: real people to reach, with reasons why",
@@ -127,6 +138,10 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
       </Button>
       <p className="text-muted-foreground mt-4 text-center text-xs">
         Payments handled securely by Razorpay. UPI, cards, netbanking.
+      </p>
+      <p className="text-muted-foreground mt-2 text-center text-xs">
+        Closed the checkout or cancelled your plan before? You can start again
+        whenever you want — nothing was charged.
       </p>
     </div>
   );

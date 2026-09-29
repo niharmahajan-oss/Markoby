@@ -3,6 +3,7 @@
 import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
 import {
   createSubscription,
+  describeRazorpayError,
   ensureCustomer,
   getRazorpayKeyId,
   verifyCheckoutSignature,
@@ -10,7 +11,13 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 export type StartSubscriptionResult =
-  | { ok: true; subscriptionId: string; razorpayKeyId: string }
+  | {
+      ok: true;
+      subscriptionId: string;
+      razorpayKeyId: string;
+      /** Hosted Razorpay page, used as a fallback if Checkout.js won't load. */
+      shortUrl: string | null;
+    }
   | { ok: false; error: string };
 
 /**
@@ -25,9 +32,26 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
 
   const supabase = await createClient();
 
+  // Reuse whatever Razorpay ids we already have so retries are idempotent:
+  // closing Checkout and trying again resumes the same customer/mandate
+  // instead of creating new ones on every attempt.
+  const { data: row } = await supabase
+    .from("subscriptions")
+    .select("razorpay_customer_id, razorpay_subscription_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
   try {
-    const customer = await ensureCustomer(user.id, user.email, user.fullName);
-    const subscription = await createSubscription(customer.id);
+    const customer = await ensureCustomer(
+      user.id,
+      user.email,
+      user.fullName,
+      row?.razorpay_customer_id,
+    );
+    const subscription = await createSubscription(
+      customer.id,
+      row?.razorpay_subscription_id,
+    );
 
     const { error } = await supabase
       .from("subscriptions")
@@ -40,10 +64,20 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
 
     if (error) return { ok: false, error: "Could not save your subscription. Try again." };
 
-    return { ok: true, subscriptionId: subscription.id, razorpayKeyId: getRazorpayKeyId() };
+    return {
+      ok: true,
+      subscriptionId: subscription.id,
+      razorpayKeyId: getRazorpayKeyId(),
+      shortUrl: subscription.short_url ?? null,
+    };
   } catch (err) {
     console.error("[billing] startSubscription failed:", err);
-    return { ok: false, error: "Payment provider error. Please try again." };
+    return {
+      ok: false,
+      error: `The payment provider didn't accept that attempt (${describeRazorpayError(
+        err,
+      )}). You can try again — nothing was charged.`,
+    };
   }
 }
 

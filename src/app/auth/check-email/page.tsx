@@ -18,8 +18,8 @@ export default async function CheckEmailPage({
       </div>
       <h1 className="mt-6 text-2xl font-semibold tracking-tight">Check your inbox</h1>
       <p className="text-muted-foreground mt-2 max-w-sm text-sm">
-        We sent you a confirmation link. Click it to activate your account, then
-        you&apos;ll be taken straight to subscribe.
+        We sent you a confirmation link. Click it to activate your account and
+        you&apos;ll land in your first free project.
       </p>
       <Button className="mt-8" variant="secondary" render={<Link href={next ? `/auth/login?next=${encodeURIComponent(next)}` : "/auth/login"} />}>
         Back to login

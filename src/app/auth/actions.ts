@@ -36,9 +36,10 @@ export async function signUp(formData: FormData) {
     redirect(`/auth/signup?error=${encodeURIComponent(error.message)}`);
   }
 
-  // If email confirmation is disabled a session exists now → go subscribe.
+  // If email confirmation is disabled a session exists now → straight into
+  // their free project (no card needed to start).
   if (data.session) {
-    redirect("/billing/subscribe");
+    redirect("/dashboard");
   }
   redirect("/auth/check-email");
 }

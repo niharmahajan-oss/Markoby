@@ -24,7 +24,7 @@ export default async function SignupPage({
       <div className="w-full max-w-sm">
         <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
         <p className="text-muted-foreground mt-1 mb-8 text-sm">
-          ₹299/month after signup. Cancel anytime.
+          Your first project is free. ₹299/month after that.
         </p>
         <AuthForm mode="signup" error={error} />
       </div>

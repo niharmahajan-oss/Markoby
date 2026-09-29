@@ -5,7 +5,8 @@
 Markoby interviews early-stage founders about their product, then generates
 platform-native organic marketing plans and surfaces real prospects on
 Reddit, X (Twitter), Instagram, Discord, and YouTube. Single plan:
-**₹299/month** via Razorpay. No free tier, no ad spend.
+**₹299/month** via Razorpay. **The first project is free** — no card needed;
+the paid plan is what unlocks creating more projects.
 
 ## Stack
 
@@ -15,6 +16,7 @@ Reddit, X (Twitter), Instagram, Discord, and YouTube. Single plan:
 | Backend    | Supabase — Postgres + RLS, Auth (email/password), Edge Functions       |
 | AI         | Groq (`openai/gpt-oss-120b` primary, `openai/gpt-oss-20b` scoring) — OpenAI-compatible |
 | Payments   | Razorpay Subscriptions + Checkout + webhooks (INR, ₹299/month)         |
+| Free trial | `FREE_TRIAL_PROJECTS` in `src/lib/auth.ts` (1 project, no card)        |
 | Background | `after()` jobs on the server (plan generation, prospect discovery)     |
 | Hosting    | Vercel (app) + Supabase (backend)                                      |
 
@@ -103,6 +105,18 @@ The webhook is the source of truth for subscription status; the app also
 optimistically activates after Checkout signature verification so founders
 aren't blocked on webhook latency.
 
+**Retrying a payment.** `startSubscription()` reuses the stored
+`razorpay_customer_id` / `razorpay_subscription_id` instead of creating new
+ones, so closing Checkout and trying again resumes the same mandate. Razorpay
+throttles bursts of API calls and reports that as `401 Authentication failed`,
+which is why the billing helpers retry transient failures with backoff and
+the real provider message is surfaced in the UI rather than a generic error.
+
+**Free trial.** `FREE_TRIAL_PROJECTS` (in `src/lib/auth.ts`) controls how many
+projects a signed-in user can create before a subscription is required. It is
+enforced server-side in `createProject()`, and the dashboard, new-project and
+subscribe pages all reflect the trial state.
+
 ### 5. Prospect APIs (optional, both free)
 
 - **Reddit**: create a *script* app at reddit.com/prefs/apps →
@@ -122,12 +136,13 @@ npm run build      # production build
 
 ## Core loop
 
-Sign up → Razorpay Checkout → Dashboard → New Project (optional website
-drop — the site is fetched and parsed server-side to sharpen the interview)
-→ AI interview (adaptive, streamed) → structured summary extracted → pick
+Sign up → free project (no card) → New Project (optional website drop — the
+site is fetched and parsed server-side to sharpen the interview) → AI
+interview (adaptive, streamed) → structured summary extracted → pick
 platforms → per-platform plans generated in the background → prospect lists
 + targeting guides → mark prospects contacted / ignore → re-run the
-interview or regenerate plans as the product evolves.
+interview or regenerate plans as the product evolves. Creating a second
+project needs the ₹299/month plan (Razorpay Checkout).
 
 ## Deploy
 

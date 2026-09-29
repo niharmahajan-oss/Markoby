@@ -31,6 +31,13 @@ export function NewProjectForm() {
     });
 
     if (!result.ok) {
+      // Free project used up: send them to checkout instead of leaving them on
+      // a form that can never succeed.
+      if (result.code === "trial_used") {
+        toast.info(result.error);
+        router.push(result.subscribeUrl ?? "/billing/subscribe?reason=trial");
+        return;
+      }
       toast.error(result.error);
       setPending(false);
       setFetchingSite(false);

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 
 import { PlatformSelectClient } from "@/app/projects/[id]/platforms/platform-select-client";
 import { getProject } from "@/lib/projects";
-import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
+import { getUserWithSubscription } from "@/lib/auth";
 
 export const metadata = { title: "Pick your platforms" };
 
@@ -16,7 +16,6 @@ export default async function PlatformsPage({
   const { id } = await params;
   const user = await getUserWithSubscription();
   if (!user) redirect("/auth/login");
-  if (!hasActiveSubscription(user)) redirect("/billing/inactive");
 
   const project = await getProject(id);
   if (!project) redirect("/dashboard");

@@ -54,6 +54,7 @@ const PLATFORMS_ROW = [
 ];
 
 const PRICING_FEATURES = [
+  "Your first project is free — no card needed",
   "Unlimited projects & re-runs",
   "AI onboarding interview",
   "Plans for all 5 platforms",
@@ -95,7 +96,7 @@ export default function LandingPage() {
               </Button>
             </div>
             <p className="text-muted-foreground mt-6 text-sm">
-              ₹299/month · cancel anytime · no ad spend, ever
+              First project free · ₹299/month after · no ad spend, ever
             </p>
             <Image
               src="/markoby-lockup.png"
@@ -228,7 +229,11 @@ export default function LandingPage() {
               </div>
               <Card className="border-primary/30 bg-primary/5 relative overflow-hidden shadow-[0_0_80px_var(--glow)]">
                 <CardContent className="p-9">
-                  <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">
+                  <Badge variant="secondary" className="gap-1.5 rounded-full px-3 py-1">
+                    <span className="bg-primary inline-block h-1.5 w-1.5 rounded-full" />
+                    Start with a free project
+                  </Badge>
+                  <p className="text-muted-foreground mt-4 text-xs font-medium tracking-widest uppercase">
                     Markoby Pro
                   </p>
                   <div className="mt-4 flex items-baseline gap-2">
@@ -240,7 +245,7 @@ export default function LandingPage() {
                     plans and prospects stay yours.
                   </p>
                   <Button size="lg" className="mt-8 w-full" render={<Link href="/auth/signup" />}>
-                    Subscribe &amp; start
+                    Start free — no card needed
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                   <Separator className="my-6" />

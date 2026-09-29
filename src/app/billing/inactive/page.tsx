@@ -6,7 +6,7 @@ import { signOut } from "@/app/auth/actions";
 import { SubscribeClient } from "@/app/billing/subscribe-client";
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/wordmark";
-import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
+import { getUserWithAccess } from "@/lib/auth";
 
 export const metadata = { title: "Subscription needed · Markoby" };
 
@@ -26,9 +26,10 @@ const STATUS_COPY: Record<string, { title: string; body: string }> = {
 };
 
 export default async function InactivePage() {
-  const user = await getUserWithSubscription();
-  if (!user) redirect("/auth/login?next=/billing/inactive");
-  if (hasActiveSubscription(user)) redirect("/dashboard");
+  const session = await getUserWithAccess();
+  if (!session) redirect("/auth/login?next=/billing/inactive");
+  const { user, access } = session;
+  if (access.active) redirect("/dashboard");
 
   const copy = STATUS_COPY[user.subscriptionStatus] ?? STATUS_COPY.inactive;
 
@@ -47,6 +48,17 @@ export default async function InactivePage() {
           <p className="text-muted-foreground mt-2 text-sm">{copy.body}</p>
 
           <SubscribeClient email={user.email} name={user.fullName} />
+
+          {access.onTrial && (
+            <p className="mt-4 text-center text-xs">
+              <Link
+                href="/dashboard"
+                className="text-muted-foreground underline-offset-4 hover:underline"
+              >
+                Not ready to pay? Use your free project instead
+              </Link>
+            </p>
+          )}
 
           <div className="mt-6 flex items-center justify-between text-sm">
             <span className="text-muted-foreground">

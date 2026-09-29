@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { InterviewChat } from "@/app/projects/[id]/interview-chat";
 import { ProjectWorkspace } from "@/app/projects/[id]/project-workspace";
-import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
+import { getUserWithSubscription } from "@/lib/auth";
 import {
   getOnboardingSummary,
   getProject,
@@ -23,7 +23,8 @@ export default async function ProjectPage({
   const { id } = await params;
   const user = await getUserWithSubscription();
   if (!user) redirect("/auth/login");
-  if (!hasActiveSubscription(user)) redirect("/billing/inactive");
+  // Projects are RLS-scoped to their owner, so a trial user can keep working
+  // inside the free project they already created.
 
   const project = await getProject(id);
   if (!project) redirect("/dashboard");

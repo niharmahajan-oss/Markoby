@@ -2,7 +2,7 @@ import { after } from "next/server";
 
 import { INTERVIEWER_SYSTEM_PROMPT } from "@/lib/ai/prompts";
 import { AiConfigError, groqChatStream } from "@/lib/ai/groq";
-import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
+import { getUserWithSubscription } from "@/lib/auth";
 import { getProject, getProjectMessages } from "@/lib/projects";
 import { createClient } from "@/lib/supabase/server";
 
@@ -165,7 +165,7 @@ function errorNdjson(err: unknown): Response {
 
 async function authorize(projectId: string) {
   const user = await getUserWithSubscription();
-  if (!user || !hasActiveSubscription(user)) return null;
+  if (!user) return null;
 
   const project = await getProject(projectId);
   if (!project) return null;

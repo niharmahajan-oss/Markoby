@@ -5,7 +5,12 @@ import { redirect } from "next/navigation";
 
 import { extractOnboardingSummary } from "@/lib/ai/groq";
 import type { Platform } from "@/lib/ai/types";
-import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
+import {
+  FREE_TRIAL_PROJECTS,
+  SUBSCRIBE_PATH,
+  countProjects,
+  getUserWithSubscription,
+} from "@/lib/auth";
 import { getProject, getProjectMessages, transcriptToText } from "@/lib/projects";
 import { createClient } from "@/lib/supabase/server";
 import { fetchSiteContext, siteContextForPrompt } from "@/lib/website";
@@ -13,7 +18,6 @@ import { fetchSiteContext, siteContextForPrompt } from "@/lib/website";
 async function requireUser() {
   const user = await getUserWithSubscription();
   if (!user) redirect("/auth/login?next=/dashboard");
-  if (!hasActiveSubscription(user)) redirect("/billing/inactive");
   return user;
 }
 
@@ -21,7 +25,7 @@ async function requireUser() {
 
 export type CreateProjectResult =
   | { ok: true; projectId: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: "trial_used"; subscribeUrl?: string };
 
 export async function createProject(input: {
   name: string;
@@ -30,6 +34,21 @@ export async function createProject(input: {
   const user = await requireUser();
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Give your project a name first." };
+
+  // Free trial: one project without a subscription. Server-side, so the limit
+  // holds no matter what the client sends.
+  if (user.subscriptionStatus !== "active") {
+    const existing = await countProjects(user.id);
+    if (existing >= FREE_TRIAL_PROJECTS) {
+      return {
+        ok: false,
+        code: "trial_used",
+        subscribeUrl: `${SUBSCRIBE_PATH}?reason=trial`,
+        error:
+          "Your free project is used up. Subscribe to ₹299/month to create more projects.",
+      };
+    }
+  }
 
   let websiteContext: string | null = null;
   let normalizedUrl: string | null = null;

@@ -1,11 +1,11 @@
-import { ArrowRight, Clock, Plus, Sparkles } from "lucide-react";
+import { ArrowRight, Clock, Lock, Plus, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PlatformIcon } from "@/components/platform-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getUserWithSubscription } from "@/lib/auth";
+import { SUBSCRIBE_PATH, getUserWithAccess } from "@/lib/auth";
 import { listProjects } from "@/lib/projects";
 
 export const metadata = { title: "Dashboard" };
@@ -29,10 +29,12 @@ function timeAgo(iso: string): string {
 }
 
 export default async function DashboardPage() {
-  const user = await getUserWithSubscription();
-  if (!user) redirect("/auth/login?next=/dashboard");
+  const session = await getUserWithAccess();
+  if (!session) redirect("/auth/login?next=/dashboard");
 
+  const { user, access } = session;
   const projects = await listProjects(user.id);
+  const subscribeHref = `${SUBSCRIBE_PATH}?reason=trial`;
 
   return (
     <div className="mx-auto w-full max-w-6xl px-6 py-10">
@@ -43,10 +45,17 @@ export default async function DashboardPage() {
             Each project gets its own interview, plans, and prospect lists.
           </p>
         </div>
-        <Button render={<Link href="/projects/new" />}>
-          <Plus className="h-4 w-4" />
-          New project
-        </Button>
+        {access.canCreateProject ? (
+          <Button render={<Link href="/projects/new" />}>
+            <Plus className="h-4 w-4" />
+            {access.onTrial ? "Start your free project" : "New project"}
+          </Button>
+        ) : (
+          <Button render={<Link href={subscribeHref} />}>
+            <Lock className="h-4 w-4" />
+            Subscribe for more projects
+          </Button>
+        )}
       </div>
 
       {projects.length === 0 ? (
@@ -62,9 +71,13 @@ export default async function DashboardPage() {
               Drop your product&apos;s URL, have a quick conversation with your AI
               growth marketer, and walk away with a concrete plan for every
               platform you pick.
+              {access.onTrial && " Your first project is free — no card needed."}
             </p>
-            <Button className="mt-8" render={<Link href="/projects/new" />}>
-              Start the interview
+            <Button
+              className="mt-8"
+              render={<Link href={access.canCreateProject ? "/projects/new" : subscribeHref} />}
+            >
+              {access.canCreateProject ? "Start the interview" : "Subscribe to continue"}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </CardContent>

@@ -56,11 +56,15 @@ function DropdownMenuLabel({
   className,
   inset,
   ...props
-}: MenuPrimitive.GroupLabel.Props & {
+}: React.ComponentProps<"div"> & {
   inset?: boolean
 }) {
+  // NOTE: intentionally a plain <div> rather than Menu.GroupLabel. GroupLabel
+  // requires a surrounding <Menu.Group> and throws at open time (Base UI error
+  // #31 "MenuGroupContext is missing") when rendered anywhere else — which
+  // crashed the entire page. A label that always renders is worth more here.
   return (
-    <MenuPrimitive.GroupLabel
+    <div
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
