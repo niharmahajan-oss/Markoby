@@ -168,6 +168,31 @@ export function resolveCustomerName(
 }
 
 /**
+ * Look up a customer by email. Only an exact email match is ever returned —
+ * taking an arbitrary customer would attach someone else's payment history to
+ * this account.
+ */
+async function findCustomerByEmail(
+  rzp: Razorpay,
+  email: string,
+): Promise<RazorpayCustomer | null> {
+  try {
+    const params = { email, count: 50 } as unknown as Parameters<
+      typeof rzp.customers.all
+    >[0];
+    const result = await withRetry("customers.all", () => rzp.customers.all(params));
+    const items = (result as unknown as { items?: RazorpayCustomer[] })?.items ?? [];
+    const match = items.find(
+      (candidate) => (candidate.email ?? "").toLowerCase() === email.toLowerCase(),
+    );
+    return match ?? null;
+  } catch (err) {
+    console.warn("[billing] customer lookup failed:", describeRazorpayError(err));
+    return null;
+  }
+}
+
+/**
  * Create (or reuse) a Razorpay customer for this user. Reusing the stored
  * customer id keeps one Razorpay customer per user and removes a create call
  * from every retry.
@@ -196,14 +221,34 @@ export async function ensureCustomer(
   }
 
   const customerName = resolveCustomerName(name, email);
-  const customer = await withRetry("customers.create", () =>
-    rzp.customers.create({
+
+  try {
+    // fail_existing: "0" is Razorpay's documented switch for "return the
+    // customer with this email if one already exists". Without it, every
+    // checkout attempt after the first fails with "Customer already exists for
+    // the merchant" — the payment error founders hit when they retried.
+    const params = {
       ...(customerName ? { name: customerName } : {}),
       email,
+      fail_existing: "0",
       notes: { user_id: userId },
-    }),
-  );
-  return customer as RazorpayCustomer;
+    } as unknown as Parameters<typeof rzp.customers.create>[0];
+    const customer = await withRetry("customers.create", () =>
+      rzp.customers.create(params),
+    );
+    return customer as RazorpayCustomer;
+  } catch (err) {
+    // Backstop for older API behaviour / accounts where fail_existing is
+    // ignored: find the customer by exact email match and reuse it.
+    if (/already exists/i.test(describeRazorpayError(err))) {
+      const existing = await findCustomerByEmail(rzp, email);
+      if (existing) {
+        console.info(`[billing] reusing existing customer ${existing.id} for ${email}`);
+        return existing;
+      }
+    }
+    throw err;
+  }
 }
 
 /** Fetch a subscription so we can decide whether it is still payable. */
