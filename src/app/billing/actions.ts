@@ -3,8 +3,8 @@
 import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
 import {
   createSubscription,
-  describeRazorpayError,
   ensureCustomer,
+  explainRazorpayError,
   getRazorpayKeyId,
   verifyCheckoutSignature,
 } from "@/lib/billing/razorpay";
@@ -74,9 +74,7 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
     console.error("[billing] startSubscription failed:", err);
     return {
       ok: false,
-      error: `The payment provider didn't accept that attempt (${describeRazorpayError(
-        err,
-      )}). You can try again — nothing was charged.`,
+      error: `${explainRazorpayError(err)} You can retry as many times as you need — nothing was charged.`,
     };
   }
 }

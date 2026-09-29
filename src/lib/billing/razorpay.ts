@@ -45,6 +45,18 @@ function getRazorpayClient(): Razorpay {
   return new Razorpay({ key_id: keyId, key_secret: keySecret });
 }
 
+/** Actionable, user-facing explanation of a Razorpay failure. */
+export function explainRazorpayError(err: unknown): string {
+  const detail = describeRazorpayError(err);
+  if (/authentication failed/i.test(detail)) {
+    return "Razorpay is temporarily rate-limiting this account. Wait about a minute, then press Subscribe again.";
+  }
+  if (/name format is invalid/i.test(detail)) {
+    return "Razorpay couldn't accept the name on the account. Set a display name on your profile, then try again.";
+  }
+  return detail;
+}
+
 /** Pull the human-readable reason out of a Razorpay SDK error. */
 export function describeRazorpayError(err: unknown): string {
   const e = err as {
@@ -91,7 +103,7 @@ function isTransient(err: unknown): boolean {
 async function withRetry<T>(
   label: string,
   fn: () => Promise<T>,
-  attempts = 3,
+  attempts = 4,
 ): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -100,7 +112,12 @@ async function withRetry<T>(
     } catch (err) {
       lastErr = err;
       if (attempt === attempts || !isTransient(err)) break;
-      const delay = 400 * attempt + Math.floor(Math.random() * 200);
+      // Throttling clears on a longer timescale than a network blip, so back
+      // off harder for "Authentication failed" (Razorpay's rate-limit signal).
+      const throttled = /authentication failed/i.test(describeRazorpayError(err));
+      const delay = throttled
+        ? 1200 * attempt
+        : 400 * attempt + Math.floor(Math.random() * 200);
       console.warn(
         `[billing] ${label} attempt ${attempt}/${attempts} failed (${describeRazorpayError(
           err,
@@ -110,6 +127,44 @@ async function withRetry<T>(
     }
   }
   throw lastErr;
+}
+
+/**
+ * Razorpay rejects a customer whose `name` isn't a person name — passing the
+ * user's email there fails with "The name format is invalid".
+ */
+function isPlausiblePersonName(value: string): boolean {
+  if (value.length < 2 || value.length > 60) return false;
+  if (value.includes("@") || /https?:|www\./i.test(value)) return false;
+  if (!/^[A-Za-z][A-Za-z .'-]*$/.test(value)) return false;
+  return value.replace(/[^A-Za-z]/g, "").length >= 2;
+}
+
+/**
+ * Best available human name for Razorpay, or null when we genuinely don't have
+ * one (in which case the field is omitted rather than filled with junk).
+ */
+export function resolveCustomerName(
+  fullName: string | null,
+  email: string,
+): string | null {
+  const candidate = (fullName ?? "").trim().replace(/\s+/g, " ");
+  if (isPlausiblePersonName(candidate)) return candidate;
+
+  // Fall back to a humanised email local part: "nihar.mahajan+1@x.com" →
+  // "Nihar Mahajan".
+  const derived = (email.split("@")[0] ?? "")
+    .split("+")[0]
+    .replace(/[._-]+/g, " ")
+    .replace(/[^A-Za-z ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+
+  return isPlausiblePersonName(derived) ? derived : null;
 }
 
 /**
@@ -140,9 +195,10 @@ export async function ensureCustomer(
     }
   }
 
+  const customerName = resolveCustomerName(name, email);
   const customer = await withRetry("customers.create", () =>
     rzp.customers.create({
-      name: name ?? email,
+      ...(customerName ? { name: customerName } : {}),
       email,
       notes: { user_id: userId },
     }),

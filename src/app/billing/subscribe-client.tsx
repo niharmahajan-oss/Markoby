@@ -81,7 +81,9 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
       subscription_id: result.subscriptionId,
       name: "Markoby",
       description: "₹299/month · all features included",
-      prefill: { email, name: name ?? undefined },
+      // Razorpay rejects names that aren't person names, so never prefill an
+      // email-like value into the name field.
+      prefill: { email, name: name && !name.includes("@") ? name : undefined },
       theme: { color: "#a3e635" },
       handler: (response) => {
         // Fire-and-forget: navigate on success, toast on failure.
