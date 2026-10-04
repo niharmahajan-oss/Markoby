@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,700;1,800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #07080a;
+        color: #ffffff;
+        font-family: "Plus Jakarta Sans", sans-serif;
+      }
+      #scene-1 {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #07080a;
+        overflow: hidden;
+      }
+      .ambient-glow {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(circle 800px at 50% 35%, rgba(163, 243, 36, 0.09), transparent 70%);
+      }
+      .grid-overlay {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 80px 80px;
+        opacity: 0.8;
+      }
+      .hero-container {
+        position: relative;
+        z-index: 2;
+        max-width: 1380px;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transform-origin: center center;
+      }
+      .pill-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 22px;
+        border-radius: 9999px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: #181b22;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #f4f4f5;
+        margin-bottom: 30px;
+      }
+      .pulse-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #a3f324;
+        box-shadow: 0 0 12px #a3f324;
+      }
+      h1 {
+        font-size: 80px;
+        line-height: 1.1;
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        margin-bottom: 28px;
+        color: #ffffff;
+      }
+      .lime-italic {
+        font-style: italic;
+        font-weight: 800;
+        color: #a3f324;
+        text-shadow: 0 0 40px rgba(163, 243, 36, 0.4);
+      }
+      .subhead {
+        font-size: 26px;
+        color: #d4d4d8;
+        max-width: 980px;
+        line-height: 1.5;
+        font-weight: 400;
+        margin-bottom: 40px;
+      }
+      .hero-pill-bar {
+        display: flex;
+        gap: 18px;
+        align-items: center;
+      }
+      .hero-tag {
+        font-family: "JetBrains Mono", monospace;
+        font-size: 15px;
+        font-weight: 600;
+        color: #ffffff;
+        background: #16181f;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 10px 22px;
+        border-radius: 10px;
+      }
+      .tag-accent {
+        color: #a3f324;
+        border-color: rgba(163, 243, 36, 0.4);
+        background: rgba(163, 243, 36, 0.1);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="scene-1" data-composition-id="scene-1" data-width="1920" data-height="1080">
+      <div class="ambient-glow"></div>
+      <div class="grid-overlay"></div>
+
+      <div class="hero-container" id="s1-content">
+        <div class="pill-badge" id="s1-badge">
+          <span class="pulse-dot"></span>
+          <span>Built for zero-ad-budget founders</span>
+        </div>
+
+        <h1 id="s1-title">
+          Your first 1,000 customers<br />
+          shouldn't cost <span class="lime-italic">a rupee of ad spend</span>
+        </h1>
+
+        <p class="subhead" id="s1-subhead">
+          Markoby interviews you like a senior growth marketer — then turns that into
+          platform-native distribution plans and real prospects.
+        </p>
+
+        <div class="hero-pill-bar" id="s1-tags">
+          <span class="hero-tag">Reddit</span>
+          <span class="hero-tag">X (Twitter)</span>
+          <span class="hero-tag">Discord</span>
+          <span class="hero-tag">YouTube</span>
+          <span class="hero-tag tag-accent">₹0 Ad Spend</span>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      // Elements entry motion
+      tl.from("#s1-badge", { y: -15, opacity: 0.7, duration: 0.35, ease: "power2.out" }, 0.0);
+      tl.from("#s1-title", { y: 25, scale: 0.96, opacity: 0.8, duration: 0.55, ease: "power3.out" }, 0.05);
+      tl.from("#s1-subhead", { y: 15, opacity: 0.6, duration: 0.55, ease: "power2.out" }, 0.25);
+      tl.from("#s1-tags", { y: 12, opacity: 0.6, duration: 0.5, ease: "power2.out" }, 0.45);
+
+      // Camera gentle push in across scene duration
+      tl.fromTo("#s1-content", { scale: 0.98 }, { scale: 1.03, duration: 3.9, ease: "none" }, 0);
+      // Clean scene exit before cut
+      tl.to("#s1-content", { opacity: 0, scale: 1.08, duration: 0.3, ease: "power2.in" }, 3.9);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["scene-1"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

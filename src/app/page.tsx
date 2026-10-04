@@ -351,6 +351,34 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Demo */}
+        <section
+          id="demo"
+          className="scroll-mt-16 border-t border-zinc-800/80 bg-[#07080a] py-20"
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+                See Markoby in action
+              </h2>
+              <p className="mt-4 text-base text-zinc-400 sm:text-lg">
+                A quick walkthrough of the interview, the plans it generates,
+                and how your weekly calendar comes together.
+              </p>
+            </div>
+
+            <div className="mx-auto mt-12 max-w-[880px] rounded-2xl border border-zinc-800/90 bg-zinc-900/60 overflow-hidden shadow-2xl">
+              <video
+                className="w-full"
+                controls
+                playsInline
+                poster="/demo/brag-poster.jpg"
+                src="/demo/brag.mp4"
+              />
+            </div>
+          </div>
+        </section>
+
         {/* Platforms */}
         <section
           id="platforms"
