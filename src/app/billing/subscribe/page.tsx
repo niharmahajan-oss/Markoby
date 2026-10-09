@@ -1,10 +1,13 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { SubscribeClient } from "@/app/billing/subscribe-client";
 import { Wordmark } from "@/components/wordmark";
 import { getUserWithAccess } from "@/lib/auth";
+import { billingCurrencyFromHeaders, countryFromHeaders } from "@/lib/billing/currency";
+import { isPayPalConfigured } from "@/lib/billing/paypal";
 
 export const metadata = { title: "Subscribe · Markoby" };
 
@@ -18,6 +21,14 @@ export default async function SubscribePage({
 
   const { user, access } = session;
   if (access.active) redirect("/dashboard");
+
+  // Server-decided currency + provider (geo headers); the client only displays it.
+  const headersList = await headers();
+  const currency = billingCurrencyFromHeaders(headersList);
+  const usePayPal =
+    isPayPalConfigured() &&
+    countryFromHeaders(headersList) !== null &&
+    currency === "USD";
 
   const { reason } = await searchParams;
   const trialUsed = reason === "trial" || access.trialExhausted;
@@ -33,7 +44,12 @@ export default async function SubscribePage({
               : "One plan. Everything included. Cancel anytime."}
           </p>
         </div>
-        <SubscribeClient email={user.email} name={user.fullName} />
+        <SubscribeClient
+          email={user.email}
+          name={user.fullName}
+          currency={currency}
+          usePayPal={usePayPal}
+        />
 
         {access.onTrial && (
           <p className="mt-6 text-center text-sm">

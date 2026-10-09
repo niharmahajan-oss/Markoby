@@ -12,7 +12,10 @@ export function GET() {
   const razorpay = Boolean(
     process.env.RAZORPAY_KEY_ID &&
       process.env.RAZORPAY_KEY_SECRET &&
-      process.env.RAZORPAY_PLAN_ID,
+      process.env.RAZORPAY_PLAN_ID &&
+      // International USD flow — absence degrades to INR-only, so report it
+      // separately rather than failing the whole service.
+      process.env.RAZORPAY_USD_PLAN_ID,
   );
   // Billing writes go through the service role (the subscriptions table is
   // RLS-locked against user writes), so a missing key breaks checkout.
@@ -28,6 +31,9 @@ export function GET() {
       supabaseServiceRole: supabaseServiceRole,
       groq: groq,
       razorpay: razorpay,
+      razorpayUsdPlan: Boolean(process.env.RAZORPAY_USD_PLAN_ID),
+      paypal: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET),
+      paypalMode: process.env.PAYPAL_MODE ?? "sandbox",
       cron: cron,
       checkinEmail: Boolean(process.env.RESEND_API_KEY),
       redditDiscovery: Boolean(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET),

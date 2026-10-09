@@ -6,6 +6,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import { activateSubscription, startSubscription } from "@/app/billing/actions";
+import { PayPalSubscribeButton } from "@/components/billing/paypal-subscribe-button";
+import { BILLING_PRICING, type BillingCurrency } from "@/lib/billing/currency";
 import { Button } from "@/components/ui/button";
 
 type RazorpayCheckoutOptions = {
@@ -46,7 +48,20 @@ function loadRazorpayScript(): Promise<boolean> {
   });
 }
 
-export function SubscribeClient({ email, name }: { email: string; name: string | null }) {
+export function SubscribeClient({
+  email,
+  name,
+  currency,
+  usePayPal,
+}: {
+  email: string;
+  name: string | null;
+  /** Decided server-side (geo headers) — this is display only. */
+  currency: BillingCurrency;
+  /** True when PayPal is configured and the server picked the PayPal flow. */
+  usePayPal: boolean;
+}) {
+  const pricing = BILLING_PRICING[currency];
   const router = useRouter();
   const [starting, setStarting] = useState(false);
 
@@ -80,7 +95,7 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
       key: result.razorpayKeyId,
       subscription_id: result.subscriptionId,
       name: "Markoby",
-      description: "₹299/month · all features included",
+      description: pricing.checkoutDescription,
       // Razorpay rejects names that aren't person names, so never prefill an
       // email-like value into the name field.
       prefill: { email, name: name && !name.includes("@") ? name : undefined },
@@ -115,7 +130,7 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
     <div className="border-border bg-card rounded-2xl border p-8 shadow-sm">
       <p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">Markoby Pro</p>
       <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-5xl font-semibold tracking-tight">₹299</span>
+        <span className="text-5xl font-semibold tracking-tight">{pricing.amountLabel}</span>
         <span className="text-muted-foreground text-sm">/ month</span>
       </div>
       <ul className="mt-8 space-y-3 text-sm">
@@ -133,14 +148,25 @@ export function SubscribeClient({ email, name }: { email: string; name: string |
           </li>
         ))}
       </ul>
-      <Button className="mt-8 w-full" size="lg" onClick={onSubscribe} disabled={starting}>
-        {starting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Subscribe — ₹299/month
-        {!starting && <ArrowRight className="ml-2 h-4 w-4" />}
-      </Button>
-      <p className="text-muted-foreground mt-4 text-center text-xs">
-        Payments handled securely by Razorpay. UPI, cards, netbanking.
-      </p>
+      {usePayPal ? (
+        <PayPalSubscribeButton />
+      ) : (
+        <>
+          <Button className="mt-8 w-full" size="lg" onClick={onSubscribe} disabled={starting}>
+            {starting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {pricing.buttonLabel}
+            {!starting && <ArrowRight className="ml-2 h-4 w-4" />}
+          </Button>
+          <p className="text-muted-foreground mt-4 text-center text-xs">
+            {pricing.methodsLabel}
+          </p>
+        </>
+      )}
+      {usePayPal && (
+        <p className="text-muted-foreground mt-4 text-center text-xs">
+          {pricing.methodsLabel}
+        </p>
+      )}
       <p className="text-muted-foreground mt-2 text-center text-xs">
         Closed the checkout or cancelled your plan before? You can start again
         whenever you want — nothing was charged.

@@ -1,5 +1,6 @@
 import { CreditCard } from "lucide-react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { signOut } from "@/app/auth/actions";
@@ -7,6 +8,8 @@ import { SubscribeClient } from "@/app/billing/subscribe-client";
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/wordmark";
 import { getUserWithAccess } from "@/lib/auth";
+import { billingCurrencyFromHeaders, countryFromHeaders } from "@/lib/billing/currency";
+import { isPayPalConfigured } from "@/lib/billing/paypal";
 
 export const metadata = { title: "Subscription needed · Markoby" };
 
@@ -33,6 +36,14 @@ export default async function InactivePage() {
 
   const copy = STATUS_COPY[user.subscriptionStatus] ?? STATUS_COPY.inactive;
 
+  // Server-decided currency + provider (geo headers); the client only displays it.
+  const headersList = await headers();
+  const currency = billingCurrencyFromHeaders(headersList);
+  const usePayPal =
+    isPayPalConfigured() &&
+    countryFromHeaders(headersList) !== null &&
+    currency === "USD";
+
   return (
     <main className="surface-glow flex min-h-svh flex-col items-center justify-center px-4">
       <div className="w-full max-w-md">
@@ -47,7 +58,12 @@ export default async function InactivePage() {
           <h1 className="mt-5 text-2xl font-semibold tracking-tight">{copy.title}</h1>
           <p className="text-muted-foreground mt-2 text-sm">{copy.body}</p>
 
-          <SubscribeClient email={user.email} name={user.fullName} />
+          <SubscribeClient
+            email={user.email}
+            name={user.fullName}
+            currency={currency}
+            usePayPal={usePayPal}
+          />
 
           {access.onTrial && (
             <p className="mt-4 text-center text-xs">

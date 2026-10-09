@@ -1,6 +1,9 @@
 "use server";
 
+import { headers } from "next/headers";
+
 import { getUserWithSubscription, hasActiveSubscription } from "@/lib/auth";
+import { billingCurrencyFromHeaders, type BillingCurrency } from "@/lib/billing/currency";
 import {
   createSubscription,
   ensureCustomer,
@@ -23,6 +26,7 @@ export type StartSubscriptionResult =
 type SubscriptionRow = {
   razorpay_customer_id: string | null;
   razorpay_subscription_id: string | null;
+  currency: BillingCurrency | null;
 };
 
 /**
@@ -62,7 +66,7 @@ async function loadSubscriptionRow(userId: string): Promise<SubscriptionRow | nu
   const admin = await createAdminClient();
   const { data, error } = await admin
     .from("subscriptions")
-    .select("razorpay_customer_id, razorpay_subscription_id")
+    .select("razorpay_customer_id, razorpay_subscription_id, currency")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
@@ -92,6 +96,9 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
     };
   }
 
+  // Country → currency is decided here, on the server, from CDN geo headers.
+  // The client never gets to choose its currency or price.
+  const currency = billingCurrencyFromHeaders(await headers());
   const existing = await loadSubscriptionRow(user.id);
 
   try {
@@ -101,9 +108,17 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
       user.fullName,
       existing?.razorpay_customer_id,
     );
+    // Only reuse an unfinished subscription created for the same currency —
+    // a user who started an INR mandate and later hits the USD flow (or vice
+    // versa) must get a fresh subscription on the currency-appropriate plan.
+    const reusableSubscriptionId =
+      existing?.razorpay_subscription_id && existing.currency === currency
+        ? existing.razorpay_subscription_id
+        : null;
     const subscription = await createSubscription(
       customer.id,
-      existing?.razorpay_subscription_id,
+      reusableSubscriptionId,
+      currency,
     );
 
     const admin = await createAdminClient();
@@ -114,6 +129,7 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
           user_id: user.id,
           razorpay_customer_id: customer.id,
           razorpay_subscription_id: subscription.id,
+          currency,
           status: "inactive",
         },
         { onConflict: "user_id" },
@@ -133,8 +149,9 @@ export async function startSubscription(): Promise<StartSubscriptionResult> {
     void logBillingEvent(user.id, "billing_subscription_created", {
       customer_id: customer.id,
       subscription_id: subscription.id,
+      currency,
       reused_customer: Boolean(existing?.razorpay_customer_id),
-      reused_subscription: Boolean(existing?.razorpay_subscription_id),
+      reused_subscription: Boolean(reusableSubscriptionId),
     });
 
     return {

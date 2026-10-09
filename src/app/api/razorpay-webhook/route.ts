@@ -84,8 +84,10 @@ export async function POST(req: NextRequest) {
   // 5. Handle payment events (e.g. for logging / analytics)
   if (event === "payment.captured") {
     const payment = payload.payload?.payment?.entity;
+    // INR amounts are paise; USD (and every other currency) is in its own
+    // smallest unit — 500 with currency=USD means $5.00.
     console.log(
-      `[razorpay-webhook] Payment captured: ${payment?.id}, amount: ${payment?.amount} paise`,
+      `[razorpay-webhook] Payment captured: ${payment?.id}, amount: ${payment?.amount} ${payment?.currency ?? ""}`,
     );
   }
 

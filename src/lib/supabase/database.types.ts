@@ -32,23 +32,48 @@ export type Database = {
           user_id: string;
           razorpay_customer_id: string | null;
           razorpay_subscription_id: string | null;
+          payment_provider: "razorpay" | "paypal";
+          paypal_subscription_id: string | null;
           status: "inactive" | "active" | "past_due" | "canceled";
+          currency: "INR" | "USD";
           current_period_end: string | null;
           updated_at: string;
         };
         Insert: {
           user_id: string;
           status?: "inactive" | "active" | "past_due" | "canceled";
+          currency?: "INR" | "USD";
+          payment_provider?: "razorpay" | "paypal";
+          paypal_subscription_id?: string | null;
           razorpay_customer_id?: string | null;
           razorpay_subscription_id?: string | null;
           current_period_end?: string | null;
         };
         Update: {
           status?: "inactive" | "active" | "past_due" | "canceled";
+          currency?: "INR" | "USD";
+          payment_provider?: "razorpay" | "paypal";
+          paypal_subscription_id?: string | null;
           razorpay_customer_id?: string | null;
           razorpay_subscription_id?: string | null;
           current_period_end?: string | null;
         };
+        Relationships: NoRelationships;
+      };
+      webhook_events: {
+        Row: {
+          id: string;
+          provider: "razorpay" | "paypal";
+          event_id: string;
+          event_type: string;
+          received_at: string;
+        };
+        Insert: {
+          provider: "razorpay" | "paypal";
+          event_id: string;
+          event_type: string;
+        };
+        Update: { event_type?: string };
         Relationships: NoRelationships;
       };
       projects: {

@@ -34,6 +34,8 @@ export type GateUser = {
   fullName: string | null;
   createdAt: string | null;
   subscriptionStatus: "inactive" | "active" | "past_due" | "canceled";
+  /** Currency actually billed for this user's plan (null until they subscribe). */
+  subscriptionCurrency: "INR" | "USD" | null;
 };
 
 /**
@@ -50,7 +52,7 @@ export async function getUserWithSubscription(): Promise<GateUser | null> {
 
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("status")
+      .select("status, currency")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -60,6 +62,8 @@ export async function getUserWithSubscription(): Promise<GateUser | null> {
       fullName: (user.user_metadata?.full_name as string | undefined) ?? null,
       createdAt: user.created_at ?? null,
       subscriptionStatus: (sub?.status as GateUser["subscriptionStatus"]) ?? "inactive",
+      subscriptionCurrency:
+        sub?.currency === "INR" || sub?.currency === "USD" ? sub.currency : null,
     };
   } catch (err) {
     if (isNextControlFlowError(err)) throw err;

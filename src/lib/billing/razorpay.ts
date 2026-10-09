@@ -2,6 +2,8 @@ import "server-only";
 
 import Razorpay from "razorpay";
 
+import type { BillingCurrency } from "@/lib/billing/currency";
+
 
 /**
  * Server-only Razorpay helpers. Uses Razorpay Subscriptions (recurring plan)
@@ -11,6 +13,29 @@ import Razorpay from "razorpay";
 export const RAZORPAY_PLAN_AMOUNT_PAISE = 29900; // ₹299.00
 export const RAZORPAY_PLAN_CURRENCY = "INR";
 export const RAZORPAY_PLAN_PERIOD = "monthly" as const;
+
+// International plan: $5.00/month. Razorpay amounts are in the smallest
+// currency unit, so USD uses *cents* — 500 = $5.00 (paise only applies to
+// INR). The plan itself lives in the Razorpay dashboard; see
+// RAZORPAY_USD_PLAN_ID.
+export const RAZORPAY_USD_PLAN_AMOUNT_CENTS = 500; // $5.00
+export const RAZORPAY_USD_PLAN_CURRENCY = "USD";
+
+/** Resolve the Razorpay plan id for a currency; fails loudly if unset. */
+export function razorpayPlanIdForCurrency(currency: BillingCurrency): string {
+  const planId =
+    currency === "INR"
+      ? process.env.RAZORPAY_PLAN_ID
+      : process.env.RAZORPAY_USD_PLAN_ID;
+  const label =
+    currency === "INR"
+      ? "RAZORPAY_PLAN_ID (the ₹299/month INR plan)"
+      : "RAZORPAY_USD_PLAN_ID (the $5/month USD plan)";
+  if (!planId) {
+    throw new Error(`${label} is not set`);
+  }
+  return planId;
+}
 
 /** Razorpay subscription states that can still be paid / retried. */
 const REUSABLE_SUBSCRIPTION_STATES = new Set([
@@ -265,13 +290,16 @@ async function fetchSubscription(id: string): Promise<RazorpaySubscription | nul
 
 /**
  * Create a Razorpay Subscription against the configured plan id. If the user
- * already has an unfinished subscription, reuse it — that way closing Checkout
- * and retrying resumes the same mandate instead of stacking duplicates (and
- * avoids extra create calls against Razorpay's rate limit).
+ * already has an unfinished subscription *on the same plan*, reuse it — that
+ * way closing Checkout and retrying resumes the same mandate instead of
+ * stacking duplicates (and avoids extra create calls against Razorpay's rate
+ * limit). A stored subscription created for a different currency is never
+ * reused; the caller supplies the currency-appropriate plan id.
  */
 export async function createSubscription(
   customerId: string,
-  existingSubscriptionId?: string | null,
+  existingSubscriptionId: string | null,
+  currency: BillingCurrency,
 ): Promise<RazorpaySubscription> {
   if (existingSubscriptionId) {
     const existing = await fetchSubscription(existingSubscriptionId);
@@ -289,12 +317,9 @@ export async function createSubscription(
     }
   }
 
-  const planId = process.env.RAZORPAY_PLAN_ID;
-  if (!planId) {
-    throw new Error(
-      "RAZORPAY_PLAN_ID is not set (create a ₹299/month plan in the Razorpay dashboard)",
-    );
-  }
+  // The plan id — and therefore the amount and currency — comes from server
+  // configuration only, never from the client.
+  const planId = razorpayPlanIdForCurrency(currency);
   const rzp = getRazorpayClient();
   // customer_id is valid per Razorpay's API docs but missing from this SDK's
   // request-body types, hence the cast.

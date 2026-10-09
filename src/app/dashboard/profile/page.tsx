@@ -1,5 +1,6 @@
 import { CreditCard, LogOut, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { signOut } from "@/app/auth/actions";
@@ -16,7 +17,17 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { FREE_TRIAL_PROJECTS, SUBSCRIBE_PATH, getUserWithAccess } from "@/lib/auth";
+import {
+  FREE_TRIAL_PROJECTS,
+  SUBSCRIBE_PATH,
+  getUserWithAccess,
+  getUserWithSubscription,
+} from "@/lib/auth";
+import {
+  BILLING_PRICING,
+  billingCurrencyFromHeaders,
+  type BillingCurrency,
+} from "@/lib/billing/currency";
 
 export const metadata = { title: "Profile" };
 
@@ -47,6 +58,13 @@ export default async function ProfilePage() {
   const { user, access } = session;
   const used = Math.min(access.projectCount, FREE_TRIAL_PROJECTS);
   const memberSince = formatDate(user.createdAt);
+
+  // Show the plan price in the currency actually billed: the stored
+  // subscription currency when one exists, otherwise the server-detected one.
+  const fullUser = await getUserWithSubscription();
+  const currency: BillingCurrency =
+    fullUser?.subscriptionCurrency ?? billingCurrencyFromHeaders(await headers());
+  const pricing = BILLING_PRICING[currency];
 
   const planStatus = access.active
     ? { label: "Markoby Pro · active", variant: "default" as const }
@@ -94,7 +112,8 @@ export default async function ProfilePage() {
         <CardHeader>
           <CardTitle>Plan &amp; usage</CardTitle>
           <CardDescription>
-            One plan, ₹299/month, everything included. Cancel anytime.
+            One plan, {pricing.amountLabel}/month, everything included. Cancel
+            anytime.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -139,7 +158,7 @@ export default async function ProfilePage() {
             <div className="pt-2">
               <Button render={<Link href={`${SUBSCRIBE_PATH}?reason=trial`} />}>
                 <CreditCard className="h-4 w-4" />
-                Subscribe — ₹299/month
+                {pricing.buttonLabel}
               </Button>
               <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
                 Your projects, plans and prospects stay yours whether or not you
