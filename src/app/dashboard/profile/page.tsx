@@ -65,6 +65,8 @@ export default async function ProfilePage() {
   const currency: BillingCurrency =
     fullUser?.subscriptionCurrency ?? billingCurrencyFromHeaders(await headers());
   const pricing = BILLING_PRICING[currency];
+  // Provider actually billing this user (null = they haven't subscribed yet).
+  const provider = fullUser?.subscriptionProvider ?? null;
 
   const planStatus = access.active
     ? { label: "Markoby Pro · active", variant: "default" as const }
@@ -144,8 +146,21 @@ export default async function ProfilePage() {
 
           {access.active ? (
             <p className="text-muted-foreground pt-2 text-xs leading-relaxed">
-              Billing runs through Razorpay. To change or cancel the plan, use the
-              link in any Razorpay receipt, or email{" "}
+              Billing runs through {provider === "paypal" ? "PayPal" : "Razorpay"}. To
+              change or cancel the plan, manage your subscription{" "}
+              {provider === "paypal" ? (
+                <a
+                  href="https://www.paypal.com/myaccount/autopay/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline-offset-4 hover:underline"
+                >
+                  in your PayPal account
+                </a>
+              ) : (
+                <span>via the link in any Razorpay receipt</span>
+              )}
+              , or email{" "}
               <Link
                 href="mailto:support@markoby.app"
                 className="underline-offset-4 hover:underline"

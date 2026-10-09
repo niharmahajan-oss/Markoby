@@ -36,6 +36,8 @@ export type GateUser = {
   subscriptionStatus: "inactive" | "active" | "past_due" | "canceled";
   /** Currency actually billed for this user's plan (null until they subscribe). */
   subscriptionCurrency: "INR" | "USD" | null;
+  /** Provider actually billing this user's plan (null until they subscribe). */
+  subscriptionProvider: "razorpay" | "paypal" | null;
 };
 
 /**
@@ -52,7 +54,7 @@ export async function getUserWithSubscription(): Promise<GateUser | null> {
 
     const { data: sub } = await supabase
       .from("subscriptions")
-      .select("status, currency")
+      .select("status, currency, payment_provider")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -64,6 +66,8 @@ export async function getUserWithSubscription(): Promise<GateUser | null> {
       subscriptionStatus: (sub?.status as GateUser["subscriptionStatus"]) ?? "inactive",
       subscriptionCurrency:
         sub?.currency === "INR" || sub?.currency === "USD" ? sub.currency : null,
+      subscriptionProvider:
+        sub?.payment_provider === "paypal" ? "paypal" : sub ? "razorpay" : null,
     };
   } catch (err) {
     if (isNextControlFlowError(err)) throw err;
