@@ -73,6 +73,12 @@ function getRazorpayClient(): Razorpay {
 /** Actionable, user-facing explanation of a Razorpay failure. */
 export function explainRazorpayError(err: unknown): string {
   const detail = describeRazorpayError(err);
+  // An unset plan id is a DEPLOYMENT error, not something the user can retry
+  // away — tell them to contact support instead of a confusing retry loop.
+  const missingPlan = detail.match(/^(RAZORPAY_PLAN_ID|RAZORPAY_USD_PLAN_ID|RAZORPAY_KEY_ID)\b.* is not set$/);
+  if (missingPlan) {
+    return "Online checkout isn't available right now. We're on it — email support@markoby.app and we'll get you subscribed right away.";
+  }
   if (/authentication failed/i.test(detail)) {
     return "Razorpay is temporarily rate-limiting this account. Wait about a minute, then press Subscribe again.";
   }

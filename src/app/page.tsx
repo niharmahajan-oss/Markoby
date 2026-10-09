@@ -20,6 +20,7 @@ import Link from "next/link";
 import type { ComponentType } from "react";
 
 import { landingAccent, landingSans } from "@/components/landing/fonts";
+import { RegionPriceToggle } from "@/components/landing/region-price-toggle";
 import { WorkspaceMockup } from "@/components/landing/workspace-mockup";
 import {
   DiscordIcon,
@@ -558,17 +559,18 @@ export default function LandingPage() {
                   <div className="mb-2 text-xs font-semibold tracking-wider text-zinc-400 uppercase">
                     Markoby Pro
                   </div>
-                  <div className="mb-4 flex items-baseline gap-2">
-                    <span className="text-5xl font-extrabold tracking-tight text-white sm:text-6xl">
-                      ₹299
-                    </span>
-                    <span className="text-lg font-medium text-zinc-400">
-                      / month
-                    </span>
-                  </div>
-                  <p className="mb-8 text-xs leading-relaxed text-zinc-400 sm:text-sm">
-                    Billed monthly in INR via Razorpay. Cancel anytime — your
-                    plans and prospects stay yours.
+
+                  {/* Two regional plans, one product. India keeps ₹299 via
+                      Razorpay; every other country pays $5 via PayPal — the
+                      matching price and gateway are selected server-side from
+                      geo headers on the actual checkout page. A tiny client
+                      toggle lets you preview the other region's card. */}
+                  <RegionPriceToggle />
+
+                  <p className="mt-2 mb-8 text-xs leading-relaxed text-zinc-400 sm:text-sm">
+                    Cancel anytime — your plans and prospects stay yours. Your
+                    region&apos;s gateway and currency are picked automatically
+                    at checkout.
                   </p>
                   <Link
                     href="/auth/signup"
@@ -577,9 +579,15 @@ export default function LandingPage() {
                     <span>Start free — no card needed</span>
                     <ArrowRight className="h-4 w-4" />
                   </Link>
-                  <div className="mt-6 text-center text-xs font-medium text-zinc-500">
-                    14 countries&apos; payment methods via UPI, cards &amp;
-                    netbanking
+                  <div className="mt-6 grid grid-cols-2 gap-2 text-center text-xs font-medium text-zinc-500">
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-2 py-2">
+                      <span className="block text-zinc-300">India</span>
+                      UPI, cards &amp; netbanking via Razorpay
+                    </div>
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 px-2 py-2">
+                      <span className="block text-zinc-300">International</span>
+                      Cards &amp; PayPal via PayPal checkout
+                    </div>
                   </div>
                 </div>
               </div>
