@@ -14,6 +14,7 @@ const FOOTER_COLS: {
       { label: "Platforms", href: "#platforms" },
       { label: "Features", href: "#features" },
       { label: "Pricing", href: "#pricing" },
+      { label: "Refer & earn", href: "#referrals" },
     ],
   },
   {

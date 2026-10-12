@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { mapPayPalStatus, verifyPayPalWebhookSignature } from "@/lib/billing/paypal";
+import {
+  awardReferralRewardForPayment,
+  releaseEligibleRewards,
+  reverseRewardForPayment,
+} from "@/lib/referrals/rewards";
 
 /**
  * PayPal Webhook Handler
@@ -141,10 +146,54 @@ export async function POST(req: NextRequest) {
       `[paypal-webhook] ${event.event_type}: subscription ${subscriptionId} → ${internalStatus}`,
     );
   } else {
-    // PAYMENT.SALE.*: log for analytics; state untouched.
+    // PAYMENT.SALE.*: log for analytics; state untouched. Also the hook for
+    // referral rewards (first completed sale on a referred user's plan) and
+    // reversals (refund/dispute of that sale).
     console.log(
       `[paypal-webhook] ${event.event_type} for subscription ${subscriptionId}`,
     );
+
+    if (event.event_type === "PAYMENT.SALE.COMPLETED") {
+      // resource.custom_id was set to the referred user's id at subscription
+      // creation; fall back to resolving via the billing subscription id.
+      let referredUserId = event.resource?.custom_id ?? null;
+      if (!referredUserId) {
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
+        const { data: row } = await supabase
+          .from("subscriptions")
+          .select("user_id")
+          .eq("paypal_subscription_id", subscriptionId)
+          .maybeSingle();
+        referredUserId = row?.user_id ?? null;
+      }
+      if (referredUserId) {
+        const result = await awardReferralRewardForPayment({
+          referredUserId,
+          provider: "paypal",
+          paymentId: event.id,
+          currency: "USD",
+        });
+        console.log("[paypal-webhook] referral reward:", JSON.stringify(result));
+        void releaseEligibleRewards();
+      }
+    }
+
+    if (
+      event.event_type === "PAYMENT.SALE.REFUNDED" ||
+      event.event_type === "PAYMENT.SALE.DENIED"
+    ) {
+      const paymentId =
+        (event.resource as unknown as { sale_id?: string } | undefined)?.sale_id ??
+        event.id;
+      const result = await reverseRewardForPayment({
+        provider: "paypal",
+        paymentId,
+      });
+      if (result) console.log("[paypal-webhook] referral reward reversed for", paymentId);
+    }
   }
 
   return NextResponse.json({ received: true });

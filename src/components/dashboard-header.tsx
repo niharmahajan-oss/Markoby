@@ -32,6 +32,12 @@ export async function DashboardHeader({
           >
             Profile
           </Link>
+          <Link
+            href="/referrals"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent/60 hidden rounded-full px-3 py-1.5 text-sm transition-colors sm:inline-block"
+          >
+            Refer & earn
+          </Link>
           <AccountMenu email={email} fullName={fullName} billingHref={billingHref} />
         </div>
       </div>

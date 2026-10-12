@@ -4,6 +4,19 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  // Referral capture: persist ?ref=CODE into a cookie so attribution survives
+  // the signup flow (signup form → email confirmation → callback). Short
+  // 30-day window; the value is validated server-side at write time.
+  const refParam = request.nextUrl.searchParams.get("ref");
+  if (refParam && /^[a-z0-9]{4,32}$/i.test(refParam)) {
+    supabaseResponse.cookies.set("mk_ref", refParam, {
+      maxAge: 60 * 60 * 24 * 30,
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

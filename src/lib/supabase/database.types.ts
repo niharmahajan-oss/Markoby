@@ -20,10 +20,158 @@ export type Database = {
           id: string;
           email: string;
           full_name: string | null;
+          referral_code: string | null;
+          referred_by: string | null;
           created_at: string;
         };
-        Insert: { id: string; email: string; full_name?: string | null };
-        Update: { email?: string; full_name?: string | null };
+        Insert: {
+          id: string;
+          email: string;
+          full_name?: string | null;
+          referral_code?: string | null;
+          referred_by?: string | null;
+        };
+        Update: {
+          email?: string;
+          full_name?: string | null;
+          referral_code?: string | null;
+          referred_by?: string | null;
+        };
+        Relationships: NoRelationships;
+      };
+      referrals: {
+        Row: {
+          id: string;
+          referrer_id: string;
+          referred_id: string;
+          status: "pending" | "rewarded" | "reversed";
+          created_at: string;
+        };
+        Insert: {
+          referrer_id: string;
+          referred_id: string;
+          status?: "pending" | "rewarded" | "reversed";
+        };
+        Update: { status?: "pending" | "rewarded" | "reversed" };
+        Relationships: NoRelationships;
+      };
+      referral_rewards: {
+        Row: {
+          id: string;
+          referral_id: string;
+          provider: "razorpay" | "paypal";
+          payment_id: string;
+          currency: "INR" | "USD";
+          amount: number;
+          status: "pending" | "released" | "reversed";
+          payment_verified_at: string;
+          eligible_at: string;
+          released_at: string | null;
+          reversed_at: string | null;
+        };
+        Insert: {
+          referral_id: string;
+          provider: "razorpay" | "paypal";
+          payment_id: string;
+          currency: "INR" | "USD";
+          amount: number;
+          status?: "pending" | "released" | "reversed";
+          eligible_at: string;
+        };
+        Update: {
+          status?: "pending" | "released" | "reversed";
+          released_at?: string | null;
+          reversed_at?: string | null;
+        };
+        Relationships: NoRelationships;
+      };
+      wallet_ledger: {
+        Row: {
+          id: string;
+          user_id: string;
+          currency: "INR" | "USD";
+          amount: number;
+          entry_type:
+            | "referral_pending"
+            | "referral_released"
+            | "referral_reversed"
+            | "withdrawal_reserved"
+            | "withdrawal_paid"
+            | "withdrawal_released";
+          referral_reward_id: string | null;
+          withdrawal_request_id: string | null;
+          note: string | null;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          currency: "INR" | "USD";
+          amount: number;
+          entry_type:
+            | "referral_pending"
+            | "referral_released"
+            | "referral_reversed"
+            | "withdrawal_reserved"
+            | "withdrawal_paid"
+            | "withdrawal_released";
+          referral_reward_id?: string | null;
+          withdrawal_request_id?: string | null;
+          note?: string | null;
+        };
+        Update: Record<string, never>;
+        Relationships: NoRelationships;
+      };
+      withdrawal_requests: {
+        Row: {
+          id: string;
+          user_id: string;
+          currency: "INR" | "USD";
+          amount: number;
+          status:
+            | "requested"
+            | "under_review"
+            | "approved"
+            | "paid"
+            | "rejected"
+            | "cancelled";
+          payout_method: string;
+          payout_details: Json;
+          admin_note: string | null;
+          payment_reference: string | null;
+          paid_at: string | null;
+          paid_by_admin: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          currency: "INR" | "USD";
+          amount: number;
+          status?:
+            | "requested"
+            | "under_review"
+            | "approved"
+            | "paid"
+            | "rejected"
+            | "cancelled";
+          payout_method?: string;
+          payout_details?: Json;
+        };
+        Update: {
+          status?:
+            | "requested"
+            | "under_review"
+            | "approved"
+            | "paid"
+            | "rejected"
+            | "cancelled";
+          payout_method?: string;
+          payout_details?: Json;
+          admin_note?: string | null;
+          payment_reference?: string | null;
+          paid_at?: string | null;
+          paid_by_admin?: string | null;
+        };
         Relationships: NoRelationships;
       };
       subscriptions: {
@@ -372,6 +520,41 @@ export type Database = {
     Functions: {
       is_project_owner: {
         Args: Record<string, unknown>;
+        Returns: boolean;
+      };
+      award_referral_reward: {
+        Args: {
+          p_referred_user_id: string;
+          p_provider: string;
+          p_payment_id: string;
+          p_amount: number;
+          p_currency: string;
+          p_hours_until_eligible?: number;
+        };
+        Returns: string | null;
+      };
+      release_referral_reward: {
+        Args: { p_reward_id: string };
+        Returns: boolean;
+      };
+      reverse_referral_reward: {
+        Args: { p_provider: string; p_payment_id: string };
+        Returns: boolean;
+      };
+      wallet_balances: {
+        Args: { p_user_id: string; p_currency: string };
+        Returns: { available: number; pending: number }[];
+      };
+      reserve_withdrawal: {
+        Args: { p_user_id: string; p_currency: string; p_amount: number };
+        Returns: string | null;
+      };
+      mark_withdrawal_paid: {
+        Args: { p_request_id: string; p_payment_reference: string; p_admin_email: string };
+        Returns: boolean;
+      };
+      release_withdrawal: {
+        Args: { p_request_id: string; p_admin_email: string; p_note: string };
         Returns: boolean;
       };
     };

@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: "#platforms", label: "Platforms" },
   { href: "#features", label: "Features" },
   { href: "#pricing", label: "Pricing" },
+  { href: "#referrals", label: "Refer & earn" },
   { href: "#who-its-for", label: "Who it's for" },
 ];
 

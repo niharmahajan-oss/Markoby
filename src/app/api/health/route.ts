@@ -34,6 +34,15 @@ export function GET() {
       razorpayUsdPlan: Boolean(process.env.RAZORPAY_USD_PLAN_ID),
       paypal: Boolean(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET),
       paypalMode: process.env.PAYPAL_MODE ?? "sandbox",
+      // Safe (booleans/shapes only — values are never echoed): the two most
+      // common PayPal misconfigurations are a product id pasted into the plan
+      // slot and a plan created in the opposite mode from the credentials.
+      // Both fail at first checkout; surfacing them here makes that visible
+      // without a secret ever leaving the server.
+      paypalPlanIdSet: Boolean(process.env.PAYPAL_PLAN_ID),
+      paypalPlanIdWellFormed: /^P-[A-Z0-9]+$/i.test(process.env.PAYPAL_PLAN_ID ?? ""),
+      paypalWebhookIdSet: Boolean(process.env.PAYPAL_WEBHOOK_ID),
+      paypalProductIdSet: Boolean(process.env.PAYPAL_PRODUCT_ID),
       cron: cron,
       checkinEmail: Boolean(process.env.RESEND_API_KEY),
       redditDiscovery: Boolean(process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET),

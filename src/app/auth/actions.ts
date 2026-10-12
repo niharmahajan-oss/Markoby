@@ -1,8 +1,9 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { ensureReferralIdentity } from "@/lib/referrals/referrals";
 import { createClient } from "@/lib/supabase/server";
 
 async function getOrigin(): Promise<string> {
@@ -23,6 +24,11 @@ export async function signUp(formData: FormData) {
   const supabase = await createClient();
   const origin = await getOrigin();
 
+  // Referral attribution: captured from the ?ref= query param the visitor
+  // landed with, persisted in a short-lived signed cookie by the landing
+  // page, and written once here (write-once; immutable afterwards).
+  const refCookie = (await cookies()).get("mk_ref")?.value ?? null;
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -30,10 +36,22 @@ export async function signUp(formData: FormData) {
       data: { full_name: fullName || null },
       emailRedirectTo: `${origin}/auth/callback`,
     },
+    // Supabase delivers this via email link when confirmation is on; the
+    // /auth/callback handler reads the same cookie, so attribution survives
+    // the confirmation hop.
   });
 
   if (error) {
     redirect(`/auth/signup?error=${encodeURIComponent(error.message)}`);
+  }
+
+  if (data.user) {
+    try {
+      await ensureReferralIdentity(data.user.id, refCookie);
+    } catch (err) {
+      // Referral must never block signup.
+      console.error("[auth] referral identity setup failed:", err);
+    }
   }
 
   // If email confirmation is disabled a session exists now → straight into

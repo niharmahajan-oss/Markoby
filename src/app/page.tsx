@@ -595,6 +595,96 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Referral program */}
+        <section
+          id="referrals"
+          className="scroll-mt-16 border-t border-zinc-800/80 bg-[#07080a] py-24"
+        >
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto mb-16 max-w-3xl text-center">
+              <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 text-xs text-zinc-400">
+                <span className="h-2 w-2 rounded-full bg-[#a3f324]" />
+                Refer &amp; earn
+              </div>
+              <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
+                Grow Markoby, earn from it.
+              </h2>
+              <p className="mt-4 text-base text-zinc-400 sm:text-lg">
+                Every member gets a unique referral link. When a friend you
+                referred subscribes, you earn cash — in their local currency,
+                straight into your in-app wallet.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              <div className="card-glass flex flex-col justify-between rounded-2xl border border-zinc-800/90 p-8">
+                <div>
+                  <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-lg bg-[#a3f324]/10 font-bold text-[#a3f324]">
+                    <Link2 className="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-white">
+                    1. Share your link
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    Your dashboard gives you a personal referral link that
+                    permanently attributes friends who sign up through it —
+                    even if they take their time before subscribing.
+                  </p>
+                </div>
+              </div>
+
+              <div className="card-glass flex flex-col justify-between rounded-2xl border border-zinc-800/90 p-8">
+                <div>
+                  <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-lg bg-[#a3f324]/10 font-bold text-[#a3f324]">
+                    <BadgeCheck className="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-white">
+                    2. They subscribe
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    When your friend&apos;s first payment clears, you earn
+                    ₹100 for Indian subscribers and $2 for everyone else —
+                    tracked automatically, with no double-counting.
+                  </p>
+                </div>
+              </div>
+
+              <div className="card-glass flex flex-col justify-between rounded-2xl border border-zinc-800/90 p-8">
+                <div>
+                  <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-lg bg-[#a3f324]/10 font-bold text-[#a3f324]">
+                    <Clock className="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-2 text-xl font-bold text-white">
+                    3. Get paid
+                  </h3>
+                  <p className="text-sm leading-relaxed text-zinc-400">
+                    Rewards unlock 7 days after their first payment clears (so
+                    refunds can&apos;t game the system), then sit in your
+                    wallet — request a payout by UPI, bank transfer, or
+                    PayPal whenever you like.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mx-auto mt-10 max-w-3xl rounded-2xl border border-zinc-800/90 bg-zinc-900/60 p-6 text-center">
+              <p className="text-sm leading-relaxed text-zinc-400">
+                INR and USD rewards are tracked in separate wallets and are
+                never converted or mixed. Payouts are reviewed before they&apos;re
+                sent, so friend-of-a-friend spam doesn&apos;t score. Full
+                details live in your dashboard after you sign up.
+              </p>
+              <Link
+                href="/auth/signup"
+                className="shadow-glow-lime mt-5 inline-flex items-center justify-center gap-2 rounded-full bg-[#a3f324] px-6 py-3 text-sm font-bold text-black transition-all hover:scale-[1.02] hover:bg-[#b5fb38]"
+              >
+                <span>Sign up &amp; grab your link</span>
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        </section>
+
         {/* Who it's for */}
         <section
           id="who-its-for"

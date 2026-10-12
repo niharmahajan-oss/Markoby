@@ -88,8 +88,16 @@ export async function getPayPalAccessToken(): Promise<string> {
     body: "grant_type=client_credentials",
   });
   if (!res.ok) {
+    // Never surface OAuth internals (raw PayPal payload, credential shapes)
+    // to the UI — log the full detail server-side and throw a user-safe
+    // message that explainPayPalError recognizes as a support-contact case.
     const text = await res.text();
-    throw new Error(`PayPal OAuth failed (${res.status}): ${text.slice(0, 200)}`);
+    console.error(`[paypal] OAuth failed (${res.status}): ${text.slice(0, 200)}`);
+    const safeMessage =
+      res.status === 401
+        ? "PayPal rejected our credentials. This is a configuration problem on our side — email support@markoby.app."
+        : "Could not reach PayPal right now. Please try again in a minute.";
+    throw new Error(safeMessage);
   }
   const json = (await res.json()) as { access_token: string; expires_in: number };
   cachedToken = {
@@ -133,6 +141,22 @@ export function explainPayPalError(err: unknown): string {
     return "PayPal declined the payment method. Try a different funding source in PayPal.";
   }
   if (/PLAN_ID|plan/i.test(message) && /not found|invalid/i.test(message)) {
+    return "The $5/month plan isn't configured yet. Please contact support@markoby.app.";
+  }
+  if (/PAYPAL_PLAN_ID .*doesn't look like a billing plan id/i.test(message)) {
+    return "The $5/month plan isn't configured yet. Please contact support@markoby.app.";
+  }
+  // A wrong-mode misconfiguration (e.g. a live plan id against sandbox
+  // credentials, or vice versa) surfaces as a 404 on the plan fetch. Say so
+  // plainly — this is a deployment problem, not a user-retryable one.
+  const planFetch404 = message.match(
+    /^PayPal fetch plan failed \((\d+)\)/,
+  );
+  if (planFetch404) {
+    const status = planFetch404[1];
+    if (status === "401" || status === "403") {
+      return "PayPal rejected our credentials. This is a configuration problem on our side — email support@markoby.app.";
+    }
     return "The $5/month plan isn't configured yet. Please contact support@markoby.app.";
   }
   return message;
